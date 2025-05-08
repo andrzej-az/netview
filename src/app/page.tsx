@@ -1,15 +1,17 @@
 
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import type { Host } from '@/types/host';
 import { scanNetwork } from '@/services/network-scanner';
 import { Header } from '@/components/layout/header';
 import { HostCard } from '@/components/hosts/host-card';
+import { HostListItem } from '@/components/hosts/host-list-item';
 import { HostDetailsDrawer } from '@/components/hosts/host-details-drawer';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Loader2, ServerCrash, RotateCwIcon, WifiOffIcon, ScanLine, ScanSearch } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { Loader2, ServerCrash, RotateCwIcon, WifiOffIcon, ScanSearch, LayoutGrid, List, Search as SearchIcon } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { isValidIp } from '@/lib/ip-utils';
 import { useToast } from '@/hooks/use-toast';
@@ -30,6 +32,8 @@ export default function HomePage() {
   const [currentScanType, setCurrentScanType] = useState<'full' | 'custom'>('full');
   const [lastScannedRange, setLastScannedRange] = useState<{ startIp: string; endIp: string } | null>(null);
 
+  const [viewMode, setViewMode] = useState<'card' | 'list'>('card');
+  const [searchTerm, setSearchTerm] = useState<string>('');
 
   const { toast } = useToast();
 
@@ -49,7 +53,7 @@ export default function HomePage() {
           if (currentEndNetworkPrefix !== startNetworkPrefix) {
             shouldSuggest = true;
           }
-        } else if (!isValidIp(customEndIp)) { // Also suggest if end IP is invalid
+        } else if (!isValidIp(customEndIp)) { 
           shouldSuggest = true;
         }
       }
@@ -58,7 +62,7 @@ export default function HomePage() {
         setCustomEndIp(suggestedEndIp);
       }
     }
-  }, [customStartIp, customEndIp]); // Added customEndIp to dependency to re-evaluate if it becomes invalid
+  }, [customStartIp, customEndIp]);
 
   const fetchHosts = async (range?: { startIp: string; endIp: string }) => {
     if (range) {
@@ -86,7 +90,7 @@ export default function HomePage() {
         description: errorMessage,
         variant: "destructive",
       });
-      setHosts([]); // Clear hosts on error
+      setHosts([]); 
     } finally {
       if (range) {
         setIsScanningCustomRange(false);
@@ -97,7 +101,7 @@ export default function HomePage() {
   };
 
   useEffect(() => {
-    fetchHosts(); // Initial full network scan
+    fetchHosts(); 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); 
 
@@ -107,10 +111,6 @@ export default function HomePage() {
   };
 
   const handleRefreshFullScan = () => {
-    // Reset custom IP fields if user explicitly requests full scan
-    // setCustomStartIp(''); 
-    // setCustomEndIp(''); 
-    // Decide if resetting IPs is desired UX, for now, keep them.
     fetchHosts();
   };
 
@@ -121,7 +121,7 @@ export default function HomePage() {
         description: "Start IP address is not valid.",
         variant: "destructive",
       });
-      return; // Don't close dialog
+      return; 
     }
     if (!isValidIp(customEndIp)) {
       toast({
@@ -129,11 +129,10 @@ export default function HomePage() {
         description: "End IP address is not valid.",
         variant: "destructive",
       });
-      return; // Don't close dialog
+      return; 
     }
-    // Optional: Add logic to check if start IP is numerically less than or equal to end IP
     fetchHosts({ startIp: customStartIp, endIp: customEndIp });
-    setIsCustomRangeDialogOpen(false); // Close dialog after initiating scan
+    setIsCustomRangeDialogOpen(false); 
   };
   
   const HostSkeletonCard = () => (
@@ -150,6 +149,36 @@ export default function HomePage() {
       <Skeleton className="h-8 w-full mt-2" />
     </div>
   );
+
+  const HostListItemSkeleton = () => (
+    <div className="flex items-center space-x-3 sm:space-x-4 p-3 sm:p-4 border-b last:border-b-0">
+      <Skeleton className="h-7 w-7 sm:h-8 sm:h-8 rounded-md shrink-0" />
+      <div className="flex-1 space-y-1.5 min-w-0">
+        <Skeleton className="h-4 w-3/5" />
+        <Skeleton className="h-3 w-2/5" />
+      </div>
+      <div className="hidden md:flex items-center gap-1 mx-4 shrink-0">
+        <Skeleton className="h-5 w-8 rounded-full" />
+        <Skeleton className="h-5 w-8 rounded-full" />
+        <Skeleton className="h-5 w-8 rounded-full" />
+      </div>
+      <Skeleton className="h-8 w-8 rounded-md shrink-0" />
+    </div>
+  );
+
+  const filteredHosts = useMemo(() => {
+    if (!searchTerm) {
+      return hosts;
+    }
+    return hosts.filter(host => {
+      const term = searchTerm.toLowerCase();
+      return (
+        host.ipAddress.toLowerCase().includes(term) ||
+        (host.hostname && host.hostname.toLowerCase().includes(term)) ||
+        (host.macAddress && host.macAddress.toLowerCase().includes(term))
+      );
+    });
+  }, [hosts, searchTerm]);
 
   const currentLoadingState = isLoading || isScanningCustomRange;
 
@@ -186,6 +215,41 @@ export default function HomePage() {
             </div>
           </div>
 
+          <div className="flex flex-col md:flex-row justify-between items-center mb-6 gap-4">
+            <div className="relative w-full md:flex-grow">
+              <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
+              <Input
+                type="text"
+                placeholder="Filter by IP, hostname, MAC..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-10 w-full"
+                disabled={currentLoadingState}
+              />
+            </div>
+            <div className="flex items-center gap-2 self-end md:self-center">
+              <Button
+                variant={viewMode === 'card' ? 'secondary' : 'ghost'}
+                size="icon"
+                onClick={() => setViewMode('card')}
+                disabled={currentLoadingState}
+                aria-label="Card view"
+              >
+                <LayoutGrid className="h-5 w-5" />
+              </Button>
+              <Button
+                variant={viewMode === 'list' ? 'secondary' : 'ghost'}
+                size="icon"
+                onClick={() => setViewMode('list')}
+                disabled={currentLoadingState}
+                aria-label="List view"
+              >
+                <List className="h-5 w-5" />
+              </Button>
+            </div>
+          </div>
+
+
           {error && (
             <Alert variant="destructive" className="mb-6">
               <ServerCrash className="h-4 w-4" />
@@ -195,27 +259,52 @@ export default function HomePage() {
           )}
 
           {currentLoadingState && !error && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-              {[...Array(8)].map((_, i) => <HostSkeletonCard key={i} />)} {/* Increased skeleton count */}
-            </div>
+            viewMode === 'card' ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                {[...Array(8)].map((_, i) => <HostSkeletonCard key={i} />)}
+              </div>
+            ) : (
+              <div className="border rounded-lg shadow">
+                {[...Array(8)].map((_, i) => <HostListItemSkeleton key={i} />)}
+              </div>
+            )
           )}
 
-          {!currentLoadingState && !error && hosts.length === 0 && (
+          {!currentLoadingState && !error && filteredHosts.length === 0 && (
             <div className="text-center py-10">
               <WifiOffIcon className="mx-auto h-16 w-16 text-muted-foreground mb-4" />
-              <p className="text-xl font-medium text-muted-foreground">No hosts found.</p>
-              <p className="text-sm text-muted-foreground">
-                {currentScanType === 'custom' ? "No hosts found in the specified range." : "Ensure you are connected to the network and try refreshing."}
+              <p className="text-xl font-medium text-muted-foreground">
+                {searchTerm ? 'No hosts match your filter.' : 'No hosts found.'}
               </p>
+              <p className="text-sm text-muted-foreground">
+                {searchTerm
+                  ? 'Try a different filter term or clear the filter.'
+                  : currentScanType === 'custom'
+                  ? "No hosts found in the specified range."
+                  : "Ensure you are connected to the network and try refreshing."}
+              </p>
+              {searchTerm && (
+                <Button variant="link" onClick={() => setSearchTerm('')} className="mt-2">
+                  Clear filter
+                </Button>
+              )}
             </div>
           )}
           
-          {!currentLoadingState && !error && hosts.length > 0 && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-              {hosts.map((host) => (
-                <HostCard key={host.ipAddress} host={host} onSelect={handleHostSelect} />
-              ))}
-            </div>
+          {!currentLoadingState && !error && filteredHosts.length > 0 && (
+            viewMode === 'card' ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                {filteredHosts.map((host) => (
+                  <HostCard key={host.ipAddress} host={host} onSelect={handleHostSelect} />
+                ))}
+              </div>
+            ) : (
+              <div className="border rounded-lg shadow overflow-hidden">
+                {filteredHosts.map((host) => (
+                  <HostListItem key={host.ipAddress} host={host} onSelect={handleHostSelect} />
+                ))}
+              </div>
+            )
           )}
         </div>
 
