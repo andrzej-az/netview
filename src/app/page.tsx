@@ -29,6 +29,31 @@ export default function HomePage() {
 
   const { toast } = useToast();
 
+  useEffect(() => {
+    if (isValidIp(customStartIp)) {
+      const startParts = customStartIp.split('.');
+      const suggestedEndIp = `${startParts[0]}.${startParts[1]}.${startParts[2]}.255`;
+
+      let shouldSuggest = false;
+      if (customEndIp === '') {
+        shouldSuggest = true;
+      } else {
+        const currentEndParts = customEndIp.split('.');
+        if (currentEndParts.length === 4 && currentEndParts[3] === '255') {
+          const currentEndNetworkPrefix = `${currentEndParts[0]}.${currentEndParts[1]}.${currentEndParts[2]}`;
+          const startNetworkPrefix = `${startParts[0]}.${startParts[1]}.${startParts[2]}`;
+          if (currentEndNetworkPrefix !== startNetworkPrefix) {
+            shouldSuggest = true;
+          }
+        }
+      }
+
+      if (shouldSuggest) {
+        setCustomEndIp(suggestedEndIp);
+      }
+    }
+  }, [customStartIp]);
+
   const fetchHosts = async (range?: { startIp: string; endIp: string }) => {
     if (range) {
       setIsScanningCustomRange(true);
@@ -60,7 +85,8 @@ export default function HomePage() {
 
   useEffect(() => {
     fetchHosts();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Initial fetch
 
   const handleHostSelect = (host: Host) => {
     setSelectedHost(host);
@@ -136,7 +162,7 @@ export default function HomePage() {
         <div>
           <div className="flex justify-between items-center mb-6">
             <h2 className="text-2xl font-semibold text-foreground">
-              {isScanningCustomRange && customStartIp && customEndIp ? `Hosts in ${customStartIp} - ${customEndIp}` : 'Detected Hosts (Full Network)'}
+              {isScanningCustomRange && customStartIp && customEndIp && isValidIp(customStartIp) && isValidIp(customEndIp) ? `Hosts in ${customStartIp} - ${customEndIp}` : 'Detected Hosts (Full Network)'}
             </h2>
             <Button onClick={handleRefreshFullScan} disabled={currentLoadingState} variant="outline">
               <RotateCwIcon className={`mr-2 h-4 w-4 ${isLoading && !isScanningCustomRange ? 'animate-spin' : ''}`} />
