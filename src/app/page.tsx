@@ -5,8 +5,8 @@ import type { Host } from '@/types/host';
 // Ensure wails.d.ts is picked up by adding a reference or ensuring it's in tsconfig include paths
 /// <reference types="@/types/wails" />
 
-import { useState, useEffect, useMemo } from 'react';
-// Removed: import { scanNetwork } from '@/services/network-scanner'; 
+import { useState, useEffect, useMemo, useCallback } from 'react';
+import { scanNetwork as mockScanNetwork } from '@/services/network-scanner'; 
 import { Header } from '@/components/layout/header';
 import { HostCard } from '@/components/hosts/host-card';
 import { HostListItem } from '@/components/hosts/host-list-item';
@@ -67,7 +67,7 @@ export default function HomePage() {
     }
   }, [customStartIp, customEndIp]);
 
-  const fetchHosts = async (rangeInput?: { startIp: string; endIp: string }) => {
+  const fetchHosts = useCallback(async (rangeInput?: { startIp: string; endIp: string }) => {
     const isCustomScan = !!rangeInput;
     if (isCustomScan) {
       setIsScanningCustomRange(true);
@@ -77,15 +77,17 @@ export default function HomePage() {
     setError(null);
 
     try {
-      if (typeof window.go?.main?.App?.ScanNetwork !== 'function') {
-        throw new Error("Wails Go backend is not available. Make sure the Wails app is running.");
+      let fetchedHostsData: Host[];
+      if (typeof window.go?.main?.App?.ScanNetwork === 'function') {
+        console.log("Using Wails backend for network scan.");
+        const scanParams = isCustomScan ? rangeInput : null;
+        fetchedHostsData = await window.go.main.App.ScanNetwork(scanParams);
+      } else {
+        console.warn("Wails Go backend not available. Using mock network scanner for development.");
+        fetchedHostsData = await mockScanNetwork(rangeInput);
       }
       
-      // Pass null for full scan, or the range object for custom scan
-      const scanParams = isCustomScan ? rangeInput : null;
-      const fetchedHosts = await window.go.main.App.ScanNetwork(scanParams);
-      
-      setHosts(fetchedHosts || []); // Ensure hosts is always an array
+      setHosts(fetchedHostsData || []); 
       if (isCustomScan && rangeInput) {
         setCurrentScanType('custom');
         setLastScannedRange(rangeInput);
@@ -94,7 +96,7 @@ export default function HomePage() {
         setLastScannedRange(null);
       }
     } catch (e: any) {
-      console.error("Failed to scan network via Wails:", e);
+      console.error("Failed to scan network:", e);
       const errorMessage = e?.message || "Failed to scan the network. Please check your connection or try again.";
       setError(errorMessage);
       toast({
@@ -110,21 +112,14 @@ export default function HomePage() {
         setIsLoading(false);
       }
     }
-  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [toast]); // Removed customStartIp, customEndIp from deps as they are passed explicitly or not needed for full scan
 
   useEffect(() => {
-    // Initial scan on component mount
-    // Wait for Wails to be ready, indicated by window.go presence
-    const wailsReadyCheckInterval = setInterval(() => {
-      if (window.go?.main?.App?.ScanNetwork) {
-        clearInterval(wailsReadyCheckInterval);
-        fetchHosts();
-      }
-    }, 100);
-    
-    return () => clearInterval(wailsReadyCheckInterval);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); 
+    // Initial scan on component mount.
+    // fetchHosts will determine whether to use Wails or mock data.
+    fetchHosts();
+  }, [fetchHosts]); 
 
   const handleHostSelect = (host: Host) => {
     setSelectedHost(host);
@@ -302,7 +297,7 @@ export default function HomePage() {
                   ? 'Try a different filter term or clear the filter.'
                   : currentScanType === 'custom'
                   ? "No hosts found in the specified range."
-                  : "Ensure you are connected to the network and try refreshing."}
+                  : "Ensure you are connected to the network and try refreshing, or check if the Wails backend is running."}
               </p>
               {searchTerm && (
                 <Button variant="link" onClick={() => setSearchTerm('')} className="mt-2">
@@ -352,3 +347,4 @@ export default function HomePage() {
     </>
   );
 }
+
