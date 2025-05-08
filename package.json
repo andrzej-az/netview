@@ -7,7 +7,7 @@
     "genkit:dev": "genkit start --port 3500 -- tsx src/ai/dev.ts",
     "genkit:watch": "genkit start --port 3500 -- tsx --watch src/ai/dev.ts",
     "build": "next build",
-    "build:export": "next build && next export",
+    "build:export": "next build",
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",

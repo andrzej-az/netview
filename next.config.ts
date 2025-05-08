@@ -3,8 +3,9 @@ import type {NextConfig} from 'next';
 
 const nextConfig: NextConfig = {
   output: 'export', // Required for static site generation for Wails
-  /* config options here */
-  typescript: {
+  // Note: The `next export` command has been removed in favor of the `output: 'export'` option in next.config.js.
+  // Learn more here: https://nextjs.org/docs/app/building-your-application/deploying/static-exports
+  typescript: { 
     ignoreBuildErrors: true,
   },
   eslint: {
