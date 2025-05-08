@@ -4,6 +4,7 @@
 import type { FC } from 'react';
 import { IpOctetInput } from '@/components/common/ip-octet-input';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { cn } from '@/lib/utils';
 
 interface IpRangeInputProps {
   startIp: string;
@@ -11,6 +12,7 @@ interface IpRangeInputProps {
   endIp: string;
   onEndIpChange: (ip: string) => void;
   disabled?: boolean;
+  showTitle?: boolean; // New prop
 }
 
 export const IpRangeInput: FC<IpRangeInputProps> = ({
@@ -19,16 +21,19 @@ export const IpRangeInput: FC<IpRangeInputProps> = ({
   endIp,
   onEndIpChange,
   disabled,
+  showTitle = true, // Default to true
 }) => {
   return (
     <Card>
-      <CardHeader>
-        <CardTitle>Scan Custom IP Range</CardTitle>
-        <CardDescription>
-          Specify a start and end IP address to scan a specific range on your network.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-6">
+      {showTitle && (
+        <CardHeader>
+          <CardTitle>Scan Custom IP Range</CardTitle>
+          <CardDescription>
+            Specify a start and end IP address to scan a specific range on your network.
+          </CardDescription>
+        </CardHeader>
+      )}
+      <CardContent className={cn("space-y-6", !showTitle && "pt-6")}>
         <IpOctetInput
           label="Start IP Address"
           idPrefix="start-ip"
