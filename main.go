@@ -5,9 +5,6 @@ import (
 	"context"
 	"fmt"
 	"net"
-	"strconv"
-	"strings"
-	"sync"
 	"time"
 
 	"github.com/wailsapp/wails/v2"
