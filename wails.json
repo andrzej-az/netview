@@ -1,0 +1,13 @@
+{
+  "$schema": "https://wails.io/schemas/config.v2.json",
+  "name": "NetView",
+  "outputfilename": "netview",
+  "frontend:install": "npm install",
+  "frontend:build": "npm run build:export",
+  "frontend:dev:watcher": "npm run dev",
+  "frontend:dev:serverUrl": "auto",
+  "author": {
+    "name": "Your Name",
+    "email": "your@email.com"
+  }
+}

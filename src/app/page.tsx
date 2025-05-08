@@ -1,9 +1,12 @@
 
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
 import type { Host } from '@/types/host';
-import { scanNetwork } from '@/services/network-scanner';
+// Ensure wails.d.ts is picked up by adding a reference or ensuring it's in tsconfig include paths
+/// <reference types="@/types/wails" />
+
+import { useState, useEffect, useMemo } from 'react';
+// Removed: import { scanNetwork } from '@/services/network-scanner'; 
 import { Header } from '@/components/layout/header';
 import { HostCard } from '@/components/hosts/host-card';
 import { HostListItem } from '@/components/hosts/host-list-item';
@@ -64,26 +67,35 @@ export default function HomePage() {
     }
   }, [customStartIp, customEndIp]);
 
-  const fetchHosts = async (range?: { startIp: string; endIp: string }) => {
-    if (range) {
+  const fetchHosts = async (rangeInput?: { startIp: string; endIp: string }) => {
+    const isCustomScan = !!rangeInput;
+    if (isCustomScan) {
       setIsScanningCustomRange(true);
     } else {
       setIsLoading(true);
     }
     setError(null);
+
     try {
-      const fetchedHosts = await scanNetwork(range);
-      setHosts(fetchedHosts);
-      if (range) {
+      if (typeof window.go?.main?.App?.ScanNetwork !== 'function') {
+        throw new Error("Wails Go backend is not available. Make sure the Wails app is running.");
+      }
+      
+      // Pass null for full scan, or the range object for custom scan
+      const scanParams = isCustomScan ? rangeInput : null;
+      const fetchedHosts = await window.go.main.App.ScanNetwork(scanParams);
+      
+      setHosts(fetchedHosts || []); // Ensure hosts is always an array
+      if (isCustomScan && rangeInput) {
         setCurrentScanType('custom');
-        setLastScannedRange(range);
+        setLastScannedRange(rangeInput);
       } else {
         setCurrentScanType('full');
         setLastScannedRange(null);
       }
-    } catch (e) {
-      console.error("Failed to scan network:", e);
-      const errorMessage = "Failed to scan the network. Please check your connection or try again.";
+    } catch (e: any) {
+      console.error("Failed to scan network via Wails:", e);
+      const errorMessage = e?.message || "Failed to scan the network. Please check your connection or try again.";
       setError(errorMessage);
       toast({
         title: "Scan Error",
@@ -92,7 +104,7 @@ export default function HomePage() {
       });
       setHosts([]); 
     } finally {
-      if (range) {
+      if (isCustomScan) {
         setIsScanningCustomRange(false);
       } else {
         setIsLoading(false);
@@ -101,7 +113,16 @@ export default function HomePage() {
   };
 
   useEffect(() => {
-    fetchHosts(); 
+    // Initial scan on component mount
+    // Wait for Wails to be ready, indicated by window.go presence
+    const wailsReadyCheckInterval = setInterval(() => {
+      if (window.go?.main?.App?.ScanNetwork) {
+        clearInterval(wailsReadyCheckInterval);
+        fetchHosts();
+      }
+    }, 100);
+    
+    return () => clearInterval(wailsReadyCheckInterval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); 
 
@@ -111,7 +132,7 @@ export default function HomePage() {
   };
 
   const handleRefreshFullScan = () => {
-    fetchHosts();
+    fetchHosts(); // No argument means full scan
   };
 
   const handleScanFromDialog = () => {
@@ -331,4 +352,3 @@ export default function HomePage() {
     </>
   );
 }
-
