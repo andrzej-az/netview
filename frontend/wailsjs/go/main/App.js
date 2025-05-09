@@ -5,3 +5,7 @@
 export function ScanNetwork(arg1) {
   return window['go']['main']['App']['ScanNetwork'](arg1);
 }
+
+export function GetScanHistory() {
+  return window['go']['main']['App']['GetScanHistory']();
+}

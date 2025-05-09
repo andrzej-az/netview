@@ -3,3 +3,4 @@
 import {main} from '../models';
 
 export function ScanNetwork(arg1:main.ScanRange):Promise<void>;
+export function GetScanHistory():Promise<main.ScanHistoryItem[]>;
