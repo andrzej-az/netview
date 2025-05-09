@@ -2,7 +2,7 @@
 'use client';
 
 import type { LucideProps } from 'lucide-react';
-import { Laptop, Server, Smartphone, Printer, RouterIcon as NetworkRouterIcon, PcCase, HelpCircle, Apple } from 'lucide-react';
+import { Laptop, Server, Smartphone, Printer, RouterIcon as NetworkRouterIcon, PcCase, HelpCircle, Apple, Laptop2 } from 'lucide-react';
 import type React from 'react';
 
 interface HostIconProps extends LucideProps {
@@ -11,7 +11,7 @@ interface HostIconProps extends LucideProps {
 
 const iconMap: Record<string, React.ElementType<LucideProps>> = {
   windows_pc: Laptop,
-  linux_pc: Laptop,
+  linux_pc: Laptop2, // Changed from Laptop to Laptop2 for differentiation
   macos_pc: Apple,
   linux_server: Server,
   android_mobile: Smartphone,
