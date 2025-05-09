@@ -36,8 +36,11 @@ func (a *App) startup(ctx context.Context) {
 }
 
 
-// ScanNetwork is now a wrapper that calls the function from scan.go
+// ScanNetwork now accepts a pointer to ScanRange, which may include IPs and/or Ports.
+// If scanRange is nil, or if fields within are zero-valued, PerformScan handles defaults.
 func (a *App) ScanNetwork(scanRange *ScanRange) error {
+	// If scanRange is nil (e.g. from a frontend call with `null`), PerformScan should handle it.
+	// Or, if scanRange is an empty struct (e.g. `{}` from frontend), specific fields like Ports might be set.
 	return PerformScan(scanRange)
 }
 

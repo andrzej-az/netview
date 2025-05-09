@@ -14,12 +14,14 @@ import { HostDetailsDrawer } from '@/components/hosts/host-details-drawer';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Input } from '@/components/ui/input';
-import { Loader2, ServerCrash, RotateCwIcon, WifiOffIcon, ScanSearch, LayoutGrid, List, Search as SearchIcon, History as HistoryIcon, ScanLine } from 'lucide-react';
+import { Loader2, ServerCrash, RotateCwIcon, WifiOffIcon, ScanSearch, LayoutGrid, List, Search as SearchIcon, History as HistoryIcon, ScanLine, SettingsIcon } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { isValidIp } from '@/lib/ip-utils';
 import { useToast } from '@/hooks/use-toast';
 import { CustomRangeDialog } from '@/components/network/custom-range-dialog';
 import { ScanHistoryDrawer } from '@/components/history/scan-history-drawer';
+import { SettingsDialog } from '@/components/settings/settings-dialog';
+import { useSettings } from '@/hooks/use-settings';
 
 
 export default function HomePage() {
@@ -39,9 +41,10 @@ export default function HomePage() {
   const [viewMode, setViewMode] = useState<'card' | 'list'>('card');
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [isHistoryDrawerOpen, setIsHistoryDrawerOpen] = useState(false);
-
+  const [isSettingsDialogOpen, setIsSettingsDialogOpen] = useState(false);
 
   const { toast } = useToast();
+  const { effectivePorts, isLoaded: settingsLoaded } = useSettings();
 
   useEffect(() => {
     if (isValidIp(customStartIp)) {
@@ -71,10 +74,12 @@ export default function HomePage() {
   }, [customStartIp, customEndIp]);
 
   const fetchHosts = useCallback(async (rangeInput?: { startIp: string; endIp: string }) => {
+    if (!settingsLoaded) return; // Don't scan until settings (and thus ports) are loaded
+
     const isCustomScanRequest = !!rangeInput;
 
     setIsScanning(true);
-    setHosts([]); // Clear previous hosts for a new scan
+    setHosts([]); 
     setError(null);
 
     if (isCustomScanRequest && rangeInput) {
@@ -84,22 +89,30 @@ export default function HomePage() {
       setCurrentScanType('full');
       setLastScannedRange(null);
     }
+    
+    const scanParameters: { startIp?: string; endIp?: string; ports: number[] } = { ports: effectivePorts };
+
+    if (isCustomScanRequest && rangeInput) {
+        scanParameters.startIp = rangeInput.startIp;
+        scanParameters.endIp = rangeInput.endIp;
+    }
+
 
     try {
       if (typeof window.go?.main?.App?.ScanNetwork === 'function' && typeof window.runtime?.EventsOn === 'function') {
-        console.log("Using Wails backend for streaming network scan.");
-        await window.go.main.App.ScanNetwork(isCustomScanRequest ? rangeInput : null);
+        console.log("Using Wails backend for streaming network scan with params:", scanParameters);
+        await window.go.main.App.ScanNetwork(scanParameters);
       } else {
-        console.warn("Wails Go backend not available. Using mock streaming network scanner.");
+        console.warn("Wails Go backend not available. Using mock streaming network scanner with params:", scanParameters);
         await mockScanNetworkService(
-          rangeInput,
-          (host: Host) => { // onHostFound
+          scanParameters, // Pass the whole object
+          (host: Host) => { 
             setHosts(prevHosts => {
               if (prevHosts.find(h => h.ipAddress === host.ipAddress)) return prevHosts;
               return [...prevHosts, host];
             });
           },
-          () => { // onScanComplete
+          () => { 
             setIsScanning(false);
           }
         );
@@ -116,18 +129,17 @@ export default function HomePage() {
       setHosts([]);
       setIsScanning(false);
     }
-  }, [toast]);
+  }, [toast, effectivePorts, settingsLoaded]);
 
   useEffect(() => {
-    // Initial scan on component mount.
-    fetchHosts();
-  }, [fetchHosts]);
+    if (settingsLoaded) { // Only run initial scan if settings (and thus ports) are loaded
+        fetchHosts();
+    }
+  }, [fetchHosts, settingsLoaded]);
 
   useEffect(() => {
-    // Wails event listeners
     let unlistenHostFound: (() => void) | undefined;
     let unlistenScanComplete: (() => void) | undefined;
-    // let unlistenScanError: (() => void) | undefined; 
 
     if (typeof window.runtime?.EventsOn === 'function') {
       unlistenHostFound = window.runtime.EventsOn('hostFound', (host: Host) => {
@@ -178,7 +190,6 @@ export default function HomePage() {
     setCustomStartIp(startIp);
     setCustomEndIp(endIp);
     fetchHosts({ startIp, endIp });
-    // The ScanHistoryDrawer will close itself upon calling onRescan
   };
 
 
@@ -229,7 +240,7 @@ export default function HomePage() {
 
   return (
     <>
-      <Header />
+      <Header onSettingsClick={() => setIsSettingsDialogOpen(true)} />
       <main className="flex-grow container mx-auto p-4 md:p-8 space-y-8">
         <div>
           <div className="flex flex-col sm:flex-row justify-between items-center mb-6 gap-4">
@@ -242,7 +253,7 @@ export default function HomePage() {
             <div className="flex flex-col sm:flex-row flex-wrap gap-2 w-full sm:w-auto justify-end">
               <Button
                 onClick={() => setIsCustomRangeDialogOpen(true)}
-                disabled={isScanning}
+                disabled={isScanning || !settingsLoaded}
                 variant="outline"
                 className="w-full sm:w-auto"
               >
@@ -251,7 +262,7 @@ export default function HomePage() {
               </Button>
               <Button
                 onClick={handleRefreshFullScan}
-                disabled={isScanning}
+                disabled={isScanning || !settingsLoaded}
                 variant="outline"
                 className="w-full sm:w-auto"
               >
@@ -262,6 +273,7 @@ export default function HomePage() {
                 onClick={() => setIsHistoryDrawerOpen(true)}
                 variant="outline"
                 className="w-full sm:w-auto"
+                disabled={!settingsLoaded}
               >
                 <HistoryIcon className="mr-2 h-4 w-4" />
                 Scan History
@@ -278,7 +290,7 @@ export default function HomePage() {
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="pl-10 w-full"
-                disabled={isScanning && hosts.length === 0} 
+                disabled={(isScanning && hosts.length === 0) || !settingsLoaded} 
               />
             </div>
             <div className="flex items-center gap-2 self-end md:self-center">
@@ -286,7 +298,7 @@ export default function HomePage() {
                 variant={viewMode === 'card' ? 'secondary' : 'ghost'}
                 size="icon"
                 onClick={() => setViewMode('card')}
-                disabled={isScanning && hosts.length === 0}
+                disabled={(isScanning && hosts.length === 0) || !settingsLoaded}
                 aria-label="Card view"
               >
                 <LayoutGrid className="h-5 w-5" />
@@ -295,7 +307,7 @@ export default function HomePage() {
                 variant={viewMode === 'list' ? 'secondary' : 'ghost'}
                 size="icon"
                 onClick={() => setViewMode('list')}
-                disabled={isScanning && hosts.length === 0}
+                disabled={(isScanning && hosts.length === 0) || !settingsLoaded}
                 aria-label="List view"
               >
                 <List className="h-5 w-5" />
@@ -303,7 +315,14 @@ export default function HomePage() {
             </div>
           </div>
 
-          {isScanning && hosts.length === 0 && !error && (
+          {!settingsLoaded && (
+             <div className="flex items-center justify-center py-10 text-md text-accent">
+                <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                Loading settings...
+            </div>
+          )}
+
+          {settingsLoaded && isScanning && hosts.length === 0 && !error && (
              viewMode === 'card' ? (
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                 {[...Array(8)].map((_, i) => <HostSkeletonCard key={i} />)}
@@ -315,7 +334,7 @@ export default function HomePage() {
             )
           )}
           
-          {isScanning && hosts.length > 0 && (
+          {settingsLoaded && isScanning && hosts.length > 0 && (
              <div className="flex items-center justify-center py-4 text-md text-accent mb-4">
                 <Loader2 className="mr-2 h-5 w-5 animate-spin" />
                 Scanning in progress... Hosts will appear below as they are found.
@@ -323,7 +342,7 @@ export default function HomePage() {
           )}
 
 
-          {error && (
+          {settingsLoaded && error && (
             <Alert variant="destructive" className="mb-6">
               <ServerCrash className="h-4 w-4" />
               <AlertTitle>Error During Scan</AlertTitle>
@@ -331,7 +350,7 @@ export default function HomePage() {
             </Alert>
           )}
           
-          {!isScanning && !error && filteredHosts.length === 0 && (
+          {settingsLoaded && !isScanning && !error && filteredHosts.length === 0 && (
             <div className="text-center py-10">
               <WifiOffIcon className="mx-auto h-16 w-16 text-muted-foreground mb-4" />
               <p className="text-xl font-medium text-muted-foreground">
@@ -352,7 +371,7 @@ export default function HomePage() {
             </div>
           )}
           
-          {filteredHosts.length > 0 && (
+          {settingsLoaded && filteredHosts.length > 0 && (
             viewMode === 'card' ? (
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                 {filteredHosts.map((host) => (
@@ -389,6 +408,10 @@ export default function HomePage() {
             isOpen={isHistoryDrawerOpen}
             onOpenChange={setIsHistoryDrawerOpen}
             onRescan={handleRescanFromHistory}
+        />
+        <SettingsDialog
+          isOpen={isSettingsDialogOpen}
+          onOpenChange={setIsSettingsDialogOpen}
         />
       </main>
       <footer className="text-center py-4 border-t text-sm text-muted-foreground">

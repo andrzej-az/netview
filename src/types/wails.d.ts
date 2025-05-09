@@ -7,6 +7,13 @@ export interface ScanHistoryItem {
   timestamp: string; // ISO string date, e.g., "2023-10-27T10:30:00Z"
 }
 
+// This interface must match the Go struct ScanRange in scan.go
+export interface WailsScanParameters {
+  startIp?: string; // Optional: for full scan, these might be empty or undefined
+  endIp?: string;   // Optional
+  ports?: number[]; // List of ports to scan
+}
+
 declare global {
   interface Window {
     go: {
@@ -17,8 +24,10 @@ declare global {
            * 'scanComplete' event is emitted when the scan finishes.
            * Returns a promise that resolves when the scan is initiated,
            * or rejects if initiation fails.
+           * Parameters can include specific IPs for a range scan, or just ports for a full scan with custom ports.
+           * If parameters is null or an empty object, a default full scan might be performed.
            */
-          ScanNetwork: (range?: { startIp: string; endIp: string } | null) => Promise<void>;
+          ScanNetwork: (params?: WailsScanParameters | null) => Promise<void>;
           /**
            * Retrieves the last 10 custom scan ranges.
            */
