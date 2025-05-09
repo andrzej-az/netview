@@ -1,10 +1,12 @@
+
 // src/services/network-scanner.ts
 import type { Host } from '@/types/host';
 import { DEFAULT_PORTS } from '@/types/settings';
+import type { WailsScanParameters } from '@/types/wails'; // Use the Wails type for consistency
 
 // Helper to simulate IP range filtering for the mock
 function ipToUint32(ipStr: string): number | null {
-  if (!ipStr) return null; // Handle empty string if passed for full scan IP
+  if (!ipStr) return null; 
   const ip = ipStr.split('.').map(Number);
   if (ip.length !== 4 || ip.some(isNaN) || ip.some(octet => octet < 0 || octet > 255)) {
     return null;
@@ -23,7 +25,7 @@ const mockHostsData: Host[] = [
 ];
 
 export async function scanNetwork(
-  scanParameters: { startIp?: string; endIp?: string; ports: number[] },
+  scanParameters: WailsScanParameters, // Using WailsScanParameters which now implies startIp and endIp are mandatory
   onHostFound?: (host: Host) => void,
   onScanComplete?: () => void
 ): Promise<void> {
@@ -32,27 +34,29 @@ export async function scanNetwork(
   const portsToScan = scanParameters.ports && scanParameters.ports.length > 0 ? scanParameters.ports : DEFAULT_PORTS;
 
   return new Promise((resolve) => {
-    let hostsToScan = [...mockHostsData]; 
-
-    const isCustomRangeScan = scanParameters.startIp && scanParameters.endIp;
-
-    if (isCustomRangeScan) {
-      const startIPNum = ipToUint32(scanParameters.startIp!);
-      const endIPNum = ipToUint32(scanParameters.endIp!);
-
-      if (startIPNum === null || endIPNum === null) {
-        console.error("Mock Service: Invalid IP range provided to mock scanner.");
-        if (onScanComplete) onScanComplete();
-        resolve();
-        return;
-      }
-      hostsToScan = hostsToScan.filter(host => {
-        const hostIPNum = ipToUint32(host.ipAddress);
-        return hostIPNum !== null && hostIPNum >= startIPNum && hostIPNum <= endIPNum;
-      });
+    if (!scanParameters.startIp || !scanParameters.endIp) {
+      console.error("Mock Service: Scan requires startIp and endIp.");
+      if (onScanComplete) onScanComplete();
+      resolve();
+      return;
     }
+
+    const startIPNum = ipToUint32(scanParameters.startIp);
+    const endIPNum = ipToUint32(scanParameters.endIp);
+
+    if (startIPNum === null || endIPNum === null) {
+      console.error("Mock Service: Invalid IP range provided to mock scanner.");
+      if (onScanComplete) onScanComplete();
+      resolve();
+      return;
+    }
+
+    let hostsToScan = mockHostsData.filter(host => {
+      const hostIPNum = ipToUint32(host.ipAddress);
+      return hostIPNum !== null && hostIPNum >= startIPNum && hostIPNum <= endIPNum;
+    });
     
-    if (hostsToScan.length === 0 && isCustomRangeScan) {
+    if (hostsToScan.length === 0) {
         console.log("Mock Service: No hosts to scan in the given range/criteria.");
     }
 
@@ -61,7 +65,6 @@ export async function scanNetwork(
       if (index < hostsToScan.length) {
         const originalHost = hostsToScan[index];
         
-        // Filter open ports based on portsToScan
         const actualOpenPorts = originalHost.openPorts 
           ? originalHost.openPorts.filter(port => portsToScan.includes(port))
           : [];
@@ -86,7 +89,7 @@ export async function scanNetwork(
       }
     }
     
-    if (hostsToScan.length > 0 || !isCustomRangeScan) { // Start sending if hosts exist or it's a full scan (which implies potential hosts)
+    if (hostsToScan.length > 0) { 
         setTimeout(sendHost, 200); 
     } else { 
         setTimeout(() => { 

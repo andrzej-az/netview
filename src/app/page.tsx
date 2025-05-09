@@ -14,7 +14,7 @@ import { HostDetailsDrawer } from '@/components/hosts/host-details-drawer';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Input } from '@/components/ui/input';
-import { Loader2, ServerCrash, RotateCwIcon, WifiOffIcon, ScanSearch, LayoutGrid, List, Search as SearchIcon, History as HistoryIcon, ScanLine, SettingsIcon } from 'lucide-react';
+import { Loader2, ServerCrash, WifiOffIcon, ScanSearch, LayoutGrid, List, Search as SearchIcon, History as HistoryIcon, ScanLine } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { isValidIp } from '@/lib/ip-utils';
 import { useToast } from '@/hooks/use-toast';
@@ -22,21 +22,21 @@ import { CustomRangeDialog } from '@/components/network/custom-range-dialog';
 import { ScanHistoryDrawer } from '@/components/history/scan-history-drawer';
 import { SettingsDialog } from '@/components/settings/settings-dialog';
 import { useSettings } from '@/hooks/use-settings';
+import type { WailsScanParameters } from '@/types/wails';
 
 
 export default function HomePage() {
   const [hosts, setHosts] = useState<Host[]>([]);
   const [selectedHost, setSelectedHost] = useState<Host | null>(null);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
-  const [isScanning, setIsScanning] = useState(true); // Unified scanning state
+  const [isScanning, setIsScanning] = useState(false); 
   const [error, setError] = useState<string | null>(null);
 
   const [customStartIp, setCustomStartIp] = useState<string>('');
   const [customEndIp, setCustomEndIp] = useState<string>('');
   const [isCustomRangeDialogOpen, setIsCustomRangeDialogOpen] = useState(false);
 
-  const [currentScanType, setCurrentScanType] = useState<'full' | 'custom'>('full');
-  const [lastScannedRange, setLastScannedRange] = useState<{ startIp: string; endIp: string } | null>(null);
+  const [scannedRangeTitle, setScannedRangeTitle] = useState<{ startIp: string; endIp: string } | null>(null);
 
   const [viewMode, setViewMode] = useState<'card' | 'list'>('card');
   const [searchTerm, setSearchTerm] = useState<string>('');
@@ -73,30 +73,35 @@ export default function HomePage() {
     }
   }, [customStartIp, customEndIp]);
 
-  const fetchHosts = useCallback(async (rangeInput?: { startIp: string; endIp: string }) => {
-    if (!settingsLoaded) return; // Don't scan until settings (and thus ports) are loaded
+  const fetchHosts = useCallback(async (rangeInput: { startIp: string; endIp: string }) => {
+    if (!settingsLoaded) {
+        toast({
+            title: "Settings Not Loaded",
+            description: "Cannot start scan until settings are loaded.",
+            variant: "destructive",
+        });
+        return;
+    }
+    if (!rangeInput || !rangeInput.startIp || !rangeInput.endIp) {
+        toast({
+            title: "Invalid Range",
+            description: "A valid IP range must be provided to scan.",
+            variant: "destructive",
+        });
+        return;
+    }
 
-    const isCustomScanRequest = !!rangeInput;
 
     setIsScanning(true);
     setHosts([]); 
     setError(null);
-
-    if (isCustomScanRequest && rangeInput) {
-      setCurrentScanType('custom');
-      setLastScannedRange(rangeInput);
-    } else {
-      setCurrentScanType('full');
-      setLastScannedRange(null);
-    }
+    setScannedRangeTitle(rangeInput); // Set the title for the currently scanned range
     
-    const scanParameters: { startIp?: string; endIp?: string; ports: number[] } = { ports: effectivePorts };
-
-    if (isCustomScanRequest && rangeInput) {
-        scanParameters.startIp = rangeInput.startIp;
-        scanParameters.endIp = rangeInput.endIp;
-    }
-
+    const scanParameters: WailsScanParameters = { 
+        startIp: rangeInput.startIp, 
+        endIp: rangeInput.endIp, 
+        ports: effectivePorts 
+    };
 
     try {
       if (typeof window.go?.main?.App?.ScanNetwork === 'function' && typeof window.runtime?.EventsOn === 'function') {
@@ -105,7 +110,7 @@ export default function HomePage() {
       } else {
         console.warn("Wails Go backend not available. Using mock streaming network scanner with params:", scanParameters);
         await mockScanNetworkService(
-          scanParameters, // Pass the whole object
+          scanParameters, 
           (host: Host) => { 
             setHosts(prevHosts => {
               if (prevHosts.find(h => h.ipAddress === host.ipAddress)) return prevHosts;
@@ -132,14 +137,14 @@ export default function HomePage() {
   }, [toast, effectivePorts, settingsLoaded]);
 
   useEffect(() => {
-    if (settingsLoaded) { // Only run initial scan if settings (and thus ports) are loaded
-        fetchHosts();
-    }
-  }, [fetchHosts, settingsLoaded]);
+    // No initial scan on load. User must initiate a scan.
+  }, []);
+
 
   useEffect(() => {
     let unlistenHostFound: (() => void) | undefined;
     let unlistenScanComplete: (() => void) | undefined;
+    let unlistenScanError: (() => void) | undefined;
 
     if (typeof window.runtime?.EventsOn === 'function') {
       unlistenHostFound = window.runtime.EventsOn('hostFound', (host: Host) => {
@@ -156,21 +161,29 @@ export default function HomePage() {
            setError(prevError => prevError || "Scan finished with an issue from the backend.");
         }
       });
+
+      unlistenScanError = window.runtime.EventsOn('scanError', (errorMessage: string) => {
+        console.error("Received scanError event:", errorMessage);
+        setError(errorMessage);
+        toast({
+            title: "Scan Error",
+            description: errorMessage,
+            variant: "destructive",
+        });
+        setIsScanning(false); // Ensure scanning stops on error
+      });
     }
 
     return () => {
       if (unlistenHostFound) unlistenHostFound();
       if (unlistenScanComplete) unlistenScanComplete();
+      if (unlistenScanError) unlistenScanError();
     };
-  }, []); 
+  }, [toast]); 
 
   const handleHostSelect = (host: Host) => {
     setSelectedHost(host);
     setIsDrawerOpen(true);
-  };
-
-  const handleRefreshFullScan = () => {
-    fetchHosts(); 
   };
 
   const handleScanFromDialog = () => {
@@ -245,9 +258,9 @@ export default function HomePage() {
         <div>
           <div className="flex flex-col sm:flex-row justify-between items-center mb-6 gap-4">
             <h2 className="text-2xl font-semibold text-foreground">
-              {currentScanType === 'custom' && lastScannedRange
-                ? `Hosts in ${lastScannedRange.startIp} - ${lastScannedRange.endIp}`
-                : 'Detected Hosts (Full Network)'}
+              {scannedRangeTitle 
+                ? `Hosts in ${scannedRangeTitle.startIp} - ${scannedRangeTitle.endIp}` 
+                : 'Scan an IP Range'}
               {isScanning && <span className="text-base font-normal text-muted-foreground ml-2">(Scanning...)</span>}
             </h2>
             <div className="flex flex-col sm:flex-row flex-wrap gap-2 w-full sm:w-auto justify-end">
@@ -259,15 +272,6 @@ export default function HomePage() {
               >
                 <ScanSearch className="mr-2 h-4 w-4" />
                 Scan Specific Range
-              </Button>
-              <Button
-                onClick={handleRefreshFullScan}
-                disabled={isScanning || !settingsLoaded}
-                variant="outline"
-                className="w-full sm:w-auto"
-              >
-                <RotateCwIcon className={`mr-2 h-4 w-4 ${isScanning && currentScanType === 'full' ? 'animate-spin' : ''}`} />
-                {isScanning && currentScanType === 'full' ? 'Scanning...' : 'Refresh Full Scan'}
               </Button>
               <Button
                 onClick={() => setIsHistoryDrawerOpen(true)}
@@ -290,7 +294,7 @@ export default function HomePage() {
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="pl-10 w-full"
-                disabled={(isScanning && hosts.length === 0) || !settingsLoaded} 
+                disabled={(!scannedRangeTitle && hosts.length === 0) || (isScanning && hosts.length === 0) || !settingsLoaded} 
               />
             </div>
             <div className="flex items-center gap-2 self-end md:self-center">
@@ -298,7 +302,7 @@ export default function HomePage() {
                 variant={viewMode === 'card' ? 'secondary' : 'ghost'}
                 size="icon"
                 onClick={() => setViewMode('card')}
-                disabled={(isScanning && hosts.length === 0) || !settingsLoaded}
+                disabled={(!scannedRangeTitle && hosts.length === 0) || (isScanning && hosts.length === 0) || !settingsLoaded}
                 aria-label="Card view"
               >
                 <LayoutGrid className="h-5 w-5" />
@@ -307,7 +311,7 @@ export default function HomePage() {
                 variant={viewMode === 'list' ? 'secondary' : 'ghost'}
                 size="icon"
                 onClick={() => setViewMode('list')}
-                disabled={(isScanning && hosts.length === 0) || !settingsLoaded}
+                disabled={(!scannedRangeTitle && hosts.length === 0) || (isScanning && hosts.length === 0) || !settingsLoaded}
                 aria-label="List view"
               >
                 <List className="h-5 w-5" />
@@ -353,16 +357,30 @@ export default function HomePage() {
           {settingsLoaded && !isScanning && !error && filteredHosts.length === 0 && (
             <div className="text-center py-10">
               <WifiOffIcon className="mx-auto h-16 w-16 text-muted-foreground mb-4" />
-              <p className="text-xl font-medium text-muted-foreground">
-                {searchTerm ? 'No hosts match your filter.' : 'No hosts found.'}
-              </p>
-              <p className="text-sm text-muted-foreground">
-                {searchTerm
-                  ? 'Try a different filter term or clear the filter.'
-                  : currentScanType === 'custom'
-                  ? "No hosts found in the specified range."
-                  : "Scan complete. No hosts detected or ensure Wails backend is running."}
-              </p>
+              {scannedRangeTitle ? (
+                searchTerm ? (
+                  <>
+                    <p className="text-xl font-medium text-muted-foreground">No hosts match your filter.</p>
+                    <p className="text-sm text-muted-foreground">
+                      For range: {scannedRangeTitle.startIp} - {scannedRangeTitle.endIp}. Try a different filter or clear it.
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-xl font-medium text-muted-foreground">No hosts found.</p>
+                    <p className="text-sm text-muted-foreground">
+                      In the range: {scannedRangeTitle.startIp} - {scannedRangeTitle.endIp}.
+                    </p>
+                  </>
+                )
+              ) : (
+                <>
+                  <p className="text-xl font-medium text-muted-foreground">No Scan Performed Yet</p>
+                  <p className="text-sm text-muted-foreground">
+                    Click 'Scan Specific Range' to discover hosts.
+                  </p>
+                </>
+              )}
               {searchTerm && (
                 <Button variant="link" onClick={() => setSearchTerm('')} className="mt-2">
                   Clear filter
@@ -402,7 +420,7 @@ export default function HomePage() {
           endIp={customEndIp}
           onEndIpChange={setCustomEndIp}
           onScanRange={handleScanFromDialog}
-          isScanning={isScanning && currentScanType === 'custom'}
+          isScanning={isScanning}
         />
         <ScanHistoryDrawer
             isOpen={isHistoryDrawerOpen}

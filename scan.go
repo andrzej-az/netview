@@ -21,8 +21,8 @@ type Host struct {
 
 // ScanRange struct for custom IP range scanning, now also includes ports
 type ScanRange struct {
-	StartIP string `json:"startIp,omitempty"` // Use omitempty if IPs are optional for full scan
-	EndIP   string `json:"endIp,omitempty"`   // Use omitempty
+	StartIP string `json:"startIp"` // Ensure these are not omitempty if they become mandatory
+	EndIP   string `json:"endIp"`
 	Ports   []int  `json:"ports,omitempty"` // Ports to scan
 }
 
@@ -38,33 +38,34 @@ func InitScanner(ctx context.Context) {
 
 
 // PerformScan simulates a network scan and emits events.
+// It now requires StartIP and EndIP to be set in scanParams.
 func PerformScan(scanParams *ScanRange) error {
 	if appCtx == nil {
 		return fmt.Errorf("scanner not initialized with context")
 	}
 
-	// Add to history only if it's a custom IP range scan (both StartIP and EndIP are provided)
-	if scanParams != nil && scanParams.StartIP != "" && scanParams.EndIP != "" {
-		addScanToHistory(scanParams) // scanParams here includes StartIP, EndIP, and potentially Ports
+	if scanParams == nil || scanParams.StartIP == "" || scanParams.EndIP == "" {
+		errMsg := "PerformScan requires a valid start and end IP address."
+		fmt.Println("Go:", errMsg)
+		// Emitting an error event to the frontend if scan is initiated with invalid params from Go side
+		runtime.EventsEmit(appCtx, "scanError", errMsg)
+		runtime.EventsEmit(appCtx, "scanComplete", false) // Signal completion, albeit unsuccessful
+		return fmt.Errorf(errMsg)
 	}
+	
+	addScanToHistory(scanParams) 
+	fmt.Printf("Go: PerformScan (streaming) called from scan.go for range %s - %s\n", scanParams.StartIP, scanParams.EndIP)
 
-	fmt.Println("Go: PerformScan (streaming) called from scan.go")
 
 	portsForThisScan := defaultPortsToScan
-	if scanParams != nil && len(scanParams.Ports) > 0 {
+	if scanParams.Ports != nil && len(scanParams.Ports) > 0 { // scanParams is non-nil here
 		portsForThisScan = scanParams.Ports
 		fmt.Printf("Go: Scanning with custom ports: %v\n", portsForThisScan)
 	} else {
 		fmt.Printf("Go: Scanning with default ports: %v\n", portsForThisScan)
 	}
 	
-	isCustomIPRangeScan := false
-	if scanParams != nil && scanParams.StartIP != "" && scanParams.EndIP != "" {
-		isCustomIPRangeScan = true
-		fmt.Printf("Go: Scanning custom IP range: %s - %s\n", scanParams.StartIP, scanParams.EndIP)
-	} else {
-		fmt.Println("Go: Scanning full network (mock criteria based on allHosts)")
-	}
+	fmt.Printf("Go: Scanning custom IP range: %s - %s\n", scanParams.StartIP, scanParams.EndIP)
 
 
 	go func() {
@@ -79,29 +80,28 @@ func PerformScan(scanParams *ScanRange) error {
 		}
 
 		var hostsToConsider []Host
-		if isCustomIPRangeScan {
-			startIPNum, errStart := ipToUint32(scanParams.StartIP)
-			endIPNum, errEnd := ipToUint32(scanParams.EndIP)
+		// scanParams is guaranteed non-nil and StartIP/EndIP are populated due to earlier check
+		startIPNum, errStart := ipToUint32(scanParams.StartIP)
+		endIPNum, errEnd := ipToUint32(scanParams.EndIP)
 
-			if errStart != nil || errEnd != nil {
-				fmt.Printf("Go: Invalid IP range in goroutine: %v, %v\n", errStart, errEnd)
-				runtime.EventsEmit(appCtx, "scanError", fmt.Sprintf("Invalid IP range: %v, %v", errStart, errEnd))
-				runtime.EventsEmit(appCtx, "scanComplete", false) 
-				return
-			}
-
-			for _, host := range allHosts {
-				hostIPNum, err := ipToUint32(host.IPAddress)
-				if err != nil {
-					continue 
-				}
-				if hostIPNum >= startIPNum && hostIPNum <= endIPNum {
-					hostsToConsider = append(hostsToConsider, host)
-				}
-			}
-		} else {
-			hostsToConsider = allHosts // Full scan considers all mock hosts
+		if errStart != nil || errEnd != nil {
+			errMsg := fmt.Sprintf("Invalid IP range in goroutine: StartIP parse error: %v, EndIP parse error: %v", errStart, errEnd)
+			fmt.Println("Go:", errMsg)
+			runtime.EventsEmit(appCtx, "scanError", errMsg)
+			runtime.EventsEmit(appCtx, "scanComplete", false) 
+			return
 		}
+
+		for _, host := range allHosts {
+			hostIPNum, err := ipToUint32(host.IPAddress)
+			if err != nil {
+				continue 
+			}
+			if hostIPNum >= startIPNum && hostIPNum <= endIPNum {
+				hostsToConsider = append(hostsToConsider, host)
+			}
+		}
+
 
 		if len(hostsToConsider) == 0 {
 			fmt.Println("Go: No hosts to scan in the given range/criteria.")

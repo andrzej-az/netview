@@ -1,3 +1,4 @@
+
 // src/types/wails.d.ts
 import type { Host } from '@/types/host';
 
@@ -9,9 +10,9 @@ export interface ScanHistoryItem {
 
 // This interface must match the Go struct ScanRange in scan.go
 export interface WailsScanParameters {
-  startIp?: string; // Optional: for full scan, these might be empty or undefined
-  endIp?: string;   // Optional
-  ports?: number[]; // List of ports to scan
+  startIp: string; 
+  endIp: string;   
+  ports: number[]; // List of ports to scan (useSettings provides default if user leaves empty)
 }
 
 declare global {
@@ -20,14 +21,13 @@ declare global {
       main: {
         App: {
           /**
-           * Initiates a network scan. Hosts are reported via 'hostFound' event.
+           * Initiates a network scan for a specific IP range. Hosts are reported via 'hostFound' event.
            * 'scanComplete' event is emitted when the scan finishes.
+           * 'scanError' event may be emitted if there's an issue during the scan process.
            * Returns a promise that resolves when the scan is initiated,
            * or rejects if initiation fails.
-           * Parameters can include specific IPs for a range scan, or just ports for a full scan with custom ports.
-           * If parameters is null or an empty object, a default full scan might be performed.
            */
-          ScanNetwork: (params?: WailsScanParameters | null) => Promise<void>;
+          ScanNetwork: (params: WailsScanParameters) => Promise<void>;
           /**
            * Retrieves the last 10 custom scan ranges.
            */
