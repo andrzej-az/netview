@@ -79,7 +79,7 @@ export const ScanHistoryDrawer: FC<ScanHistoryDrawerProps> = ({
 
   return (
     <Sheet open={isOpen} onOpenChange={onOpenChange}>
-      <SheetContent side="left" className="w-[350px] sm:w-[400px] p-0 flex flex-col">
+      <SheetContent side="right" className="w-[350px] sm:w-[400px] p-0 flex flex-col">
         <SheetHeader className="p-6 border-b">
           <SheetTitle className="flex items-center text-xl">
             <History className="mr-3 h-6 w-6 text-primary" />
