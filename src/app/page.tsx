@@ -140,6 +140,8 @@ export default function HomePage() {
   useEffect(() => {
     let unlistenHostFound: (() => void) | undefined;
     let unlistenScanComplete: (() => void) | undefined;
+    let unlistenScanError: (() => void) | undefined;
+
 
     if (typeof window.runtime?.EventsOn === 'function') {
       unlistenHostFound = window.runtime.EventsOn('hostFound', (host: Host) => {
@@ -153,16 +155,28 @@ export default function HomePage() {
         setIsScanning(false);
         if (!success) {
           console.warn("Scan completed, but Go backend indicated an issue during the scan.");
-           setError(prevError => prevError || "Scan finished with an issue from the backend.");
+           // setError(prevError => prevError || "Scan finished with an issue from the backend."); // Error might already be set by scanError
         }
+      });
+
+      unlistenScanError = window.runtime.EventsOn('scanError', (errorMessage: string) => {
+        console.error("Go backend scan error:", errorMessage);
+        setError(errorMessage || "An unspecified error occurred during the scan in the backend.");
+        toast({
+            title: "Backend Scan Error",
+            description: errorMessage,
+            variant: "destructive",
+        });
+        setIsScanning(false); // Also stop scanning indicator on explicit error
       });
     }
 
     return () => {
       if (unlistenHostFound) unlistenHostFound();
       if (unlistenScanComplete) unlistenScanComplete();
+      if (unlistenScanError) unlistenScanError();
     };
-  }, []); 
+  }, [toast]); 
 
   const handleHostSelect = (host: Host) => {
     setSelectedHost(host);
@@ -174,21 +188,26 @@ export default function HomePage() {
   };
 
   const handleScanFromDialog = () => {
+    // Validation is now primarily handled in CustomRangeDialog for the shake effect.
+    // This function is called by CustomRangeDialog when IPs are valid.
     if (!isValidIp(customStartIp)) {
-      toast({ title: "Invalid Input", description: "Start IP address is not valid.", variant: "destructive" });
+      // This case should ideally not be reached if CustomRangeDialog validates first.
+      // However, keeping a silent return for safety.
       return;
     }
     if (!isValidIp(customEndIp)) {
-      toast({ title: "Invalid Input", description: "End IP address is not valid.", variant: "destructive" });
+      // Same as above.
       return;
     }
     fetchHosts({ startIp: customStartIp, endIp: customEndIp });
-    setIsCustomRangeDialogOpen(false);
+    setIsCustomRangeDialogOpen(false); // Close dialog on successful scan initiation
   };
 
   const handleRescanFromHistory = (startIp: string, endIp: string) => {
     setCustomStartIp(startIp);
     setCustomEndIp(endIp);
+    // Ensure dialog closes if it was open for some reason or if history triggers scan directly
+    setIsCustomRangeDialogOpen(false); 
     fetchHosts({ startIp, endIp });
   };
 
