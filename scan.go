@@ -43,6 +43,12 @@ func PerformScan(scanRange *ScanRange) error {
 		return fmt.Errorf("scanner not initialized with context")
 	}
 
+	// Add to history if it's a custom range scan
+	// This is done before the goroutine to ensure it's recorded synchronously with scan initiation.
+	if scanRange != nil && scanRange.StartIP != "" && scanRange.EndIP != "" {
+		addScanToHistory(scanRange)
+	}
+
 	fmt.Println("Go: PerformScan (streaming) called from scan.go")
 	if scanRange != nil {
 		fmt.Printf("Go: Scanning range: %s - %s\n", scanRange.StartIP, scanRange.EndIP)

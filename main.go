@@ -41,6 +41,8 @@ func (a *App) ScanNetwork(scanRange *ScanRange) error {
 	return PerformScan(scanRange)
 }
 
+// GetScanHistory is defined in history.go as a method of *App.
+// It will be automatically bound when `app` instance of `*App` is bound.
 
 func main() {
 	// Create an instance of the app structure
@@ -57,7 +59,7 @@ func main() {
 		BackgroundColour: &options.RGBA{R: 27, G: 38, B: 54, A: 1}, // Dark background
 		OnStartup:        app.startup,
 		Bind: []interface{}{
-			app,
+			app, // Binding the app instance makes all its methods (like ScanNetwork, GetScanHistory) available to the frontend.
 		},
 	})
 
@@ -65,4 +67,3 @@ func main() {
 		println("Error:", err.Error())
 	}
 }
-

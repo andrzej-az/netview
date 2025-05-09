@@ -1,6 +1,11 @@
-
 // src/types/wails.d.ts
 import type { Host } from '@/types/host';
+
+export interface ScanHistoryItem {
+  startIp: string;
+  endIp: string;
+  timestamp: string; // ISO string date, e.g., "2023-10-27T10:30:00Z"
+}
 
 declare global {
   interface Window {
@@ -14,6 +19,10 @@ declare global {
            * or rejects if initiation fails.
            */
           ScanNetwork: (range?: { startIp: string; endIp: string } | null) => Promise<void>;
+          /**
+           * Retrieves the last 10 custom scan ranges.
+           */
+          GetScanHistory: () => Promise<ScanHistoryItem[]>;
         };
       };
     };

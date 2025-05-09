@@ -14,11 +14,13 @@ import { HostDetailsDrawer } from '@/components/hosts/host-details-drawer';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Input } from '@/components/ui/input';
-import { Loader2, ServerCrash, RotateCwIcon, WifiOffIcon, ScanSearch, LayoutGrid, List, Search as SearchIcon, ScanLine } from 'lucide-react';
+import { Loader2, ServerCrash, RotateCwIcon, WifiOffIcon, ScanSearch, LayoutGrid, List, Search as SearchIcon, History as HistoryIcon, ScanLine } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { isValidIp } from '@/lib/ip-utils';
 import { useToast } from '@/hooks/use-toast';
 import { CustomRangeDialog } from '@/components/network/custom-range-dialog';
+import { ScanHistoryDrawer } from '@/components/history/scan-history-drawer';
+
 
 export default function HomePage() {
   const [hosts, setHosts] = useState<Host[]>([]);
@@ -36,6 +38,8 @@ export default function HomePage() {
 
   const [viewMode, setViewMode] = useState<'card' | 'list'>('card');
   const [searchTerm, setSearchTerm] = useState<string>('');
+  const [isHistoryDrawerOpen, setIsHistoryDrawerOpen] = useState(false);
+
 
   const { toast } = useToast();
 
@@ -84,8 +88,6 @@ export default function HomePage() {
     try {
       if (typeof window.go?.main?.App?.ScanNetwork === 'function' && typeof window.runtime?.EventsOn === 'function') {
         console.log("Using Wails backend for streaming network scan.");
-        // Go function starts the scan; events will update hosts and scanning state.
-        // Listeners are set up in a separate useEffect.
         await window.go.main.App.ScanNetwork(isCustomScanRequest ? rangeInput : null);
       } else {
         console.warn("Wails Go backend not available. Using mock streaming network scanner.");
@@ -125,12 +127,12 @@ export default function HomePage() {
     // Wails event listeners
     let unlistenHostFound: (() => void) | undefined;
     let unlistenScanComplete: (() => void) | undefined;
-    // let unlistenScanError: (() => void) | undefined; // Example for a dedicated error event
+    // let unlistenScanError: (() => void) | undefined; 
 
     if (typeof window.runtime?.EventsOn === 'function') {
       unlistenHostFound = window.runtime.EventsOn('hostFound', (host: Host) => {
         setHosts(prevHosts => {
-          if (prevHosts.find(h => h.ipAddress === host.ipAddress)) return prevHosts; // Avoid duplicates
+          if (prevHosts.find(h => h.ipAddress === host.ipAddress)) return prevHosts; 
           return [...prevHosts, host];
         });
       });
@@ -139,25 +141,16 @@ export default function HomePage() {
         setIsScanning(false);
         if (!success) {
           console.warn("Scan completed, but Go backend indicated an issue during the scan.");
-          // Potentially set an error if not already set by ScanNetwork call
            setError(prevError => prevError || "Scan finished with an issue from the backend.");
         }
       });
-
-      // Example:
-      // unlistenScanError = window.runtime.EventsOn('scanError', (errorMessage: string) => {
-      //   setError(errorMessage);
-      //   setIsScanning(false);
-      // });
     }
 
     return () => {
-      // Cleanup listeners on component unmount
       if (unlistenHostFound) unlistenHostFound();
       if (unlistenScanComplete) unlistenScanComplete();
-      // if (unlistenScanError) unlistenScanError();
     };
-  }, []); // Empty dependency array ensures listeners are set up once and cleaned up on unmount
+  }, []); 
 
   const handleHostSelect = (host: Host) => {
     setSelectedHost(host);
@@ -165,7 +158,7 @@ export default function HomePage() {
   };
 
   const handleRefreshFullScan = () => {
-    fetchHosts(); // No argument means full scan
+    fetchHosts(); 
   };
 
   const handleScanFromDialog = () => {
@@ -180,6 +173,14 @@ export default function HomePage() {
     fetchHosts({ startIp: customStartIp, endIp: customEndIp });
     setIsCustomRangeDialogOpen(false);
   };
+
+  const handleRescanFromHistory = (startIp: string, endIp: string) => {
+    setCustomStartIp(startIp);
+    setCustomEndIp(endIp);
+    fetchHosts({ startIp, endIp });
+    // The ScanHistoryDrawer will close itself upon calling onRescan
+  };
+
 
   const HostSkeletonCard = () => (
     <div className="flex flex-col space-y-3 p-4 border rounded-lg shadow">
@@ -238,7 +239,7 @@ export default function HomePage() {
                 : 'Detected Hosts (Full Network)'}
               {isScanning && <span className="text-base font-normal text-muted-foreground ml-2">(Scanning...)</span>}
             </h2>
-            <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+            <div className="flex flex-col sm:flex-row flex-wrap gap-2 w-full sm:w-auto justify-end">
               <Button
                 onClick={() => setIsCustomRangeDialogOpen(true)}
                 disabled={isScanning}
@@ -257,6 +258,14 @@ export default function HomePage() {
                 <RotateCwIcon className={`mr-2 h-4 w-4 ${isScanning && currentScanType === 'full' ? 'animate-spin' : ''}`} />
                 {isScanning && currentScanType === 'full' ? 'Scanning...' : 'Refresh Full Scan'}
               </Button>
+              <Button
+                onClick={() => setIsHistoryDrawerOpen(true)}
+                variant="outline"
+                className="w-full sm:w-auto"
+              >
+                <HistoryIcon className="mr-2 h-4 w-4" />
+                Scan History
+              </Button>
             </div>
           </div>
 
@@ -269,7 +278,7 @@ export default function HomePage() {
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="pl-10 w-full"
-                disabled={isScanning && hosts.length === 0} // Disable only if initial scan is loading
+                disabled={isScanning && hosts.length === 0} 
               />
             </div>
             <div className="flex items-center gap-2 self-end md:self-center">
@@ -343,7 +352,6 @@ export default function HomePage() {
             </div>
           )}
           
-          {/* Always render hosts if available, even during scan, error state is separate */}
           {filteredHosts.length > 0 && (
             viewMode === 'card' ? (
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
@@ -375,7 +383,12 @@ export default function HomePage() {
           endIp={customEndIp}
           onEndIpChange={setCustomEndIp}
           onScanRange={handleScanFromDialog}
-          isScanning={isScanning && currentScanType === 'custom'} // Pass true if actively scanning *this* custom range
+          isScanning={isScanning && currentScanType === 'custom'}
+        />
+        <ScanHistoryDrawer
+            isOpen={isHistoryDrawerOpen}
+            onOpenChange={setIsHistoryDrawerOpen}
+            onRescan={handleRescanFromHistory}
         />
       </main>
       <footer className="text-center py-4 border-t text-sm text-muted-foreground">
