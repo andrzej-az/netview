@@ -2,8 +2,9 @@
 import type { Host } from '@/types/host';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { PcCaseIcon, InfoIcon, MoreHorizontal } from 'lucide-react';
+import { InfoIcon, MoreHorizontal } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { HostIcon } from './host-icon';
 
 interface HostListItemProps {
   host: Host;
@@ -15,18 +16,19 @@ export function HostListItem({ host, onSelect }: HostListItemProps) {
   const hasMorePorts = (host.openPorts?.length || 0) > 3;
 
   const primaryDisplay = host.hostname || host.ipAddress;
-  const secondaryDisplay = host.hostname ? host.ipAddress : host.macAddress;
+  const secondaryDisplay = host.hostname ? host.ipAddress : (host.deviceType ? `Type: ${host.deviceType.replace(/_/g, ' ')}` : host.macAddress);
+
 
   return (
     <div className="flex items-center p-3 sm:p-4 border-b last:border-b-0 hover:bg-muted/50 transition-colors duration-150 ease-in-out">
-      <PcCaseIcon className="w-7 h-7 sm:w-8 sm:h-8 text-accent mr-3 sm:mr-4 shrink-0" />
+      <HostIcon deviceType={host.deviceType} className="w-7 h-7 sm:w-8 sm:h-8 text-accent mr-3 sm:mr-4 shrink-0" />
       
       <div className="flex-1 min-w-0 mr-3">
         <p className="font-semibold text-sm sm:text-base truncate" title={primaryDisplay}>
           {primaryDisplay}
         </p>
         {secondaryDisplay && (
-           <p className="text-xs sm:text-sm text-muted-foreground truncate" title={secondaryDisplay}>
+           <p className="text-xs sm:text-sm text-muted-foreground truncate capitalize" title={secondaryDisplay}>
             {secondaryDisplay}
           </p>
         )}

@@ -14,14 +14,37 @@ function ipToUint32(ipStr: string): number | null {
   return (ip[0] << 24) | (ip[1] << 16) | (ip[2] << 8) | ip[3];
 }
 
+// Helper for mock device type determination
+function mockDetermineDeviceType(os: string | undefined): string {
+  if (!os) return "generic_device";
+  const lowerOS = os.toLowerCase();
+
+  if (lowerOS.includes("windows")) return "windows_pc";
+  if (lowerOS.includes("android")) return "android_mobile";
+  if (lowerOS.includes("ios") || lowerOS.includes("iphone") || lowerOS.includes("ipad")) return "ios_mobile";
+  if (lowerOS.includes("printer")) return "printer";
+  if (lowerOS.includes("router") || lowerOS.includes("firewall") || lowerOS.includes("gateway")) return "router_firewall";
+  if (lowerOS.includes("linux")) {
+    if (lowerOS.includes("server")) return "linux_server";
+    return "linux_pc";
+  }
+  if (lowerOS.includes("macos") || lowerOS.includes("mac os x")) return "macos_pc";
+  return "generic_device";
+}
+
+
 const mockHostsData: Host[] = [
-  { ipAddress: "192.168.1.1", hostname: "router.local", macAddress: "00:1A:2B:3C:4D:5E", os: "RouterOS (Mock)", openPorts: [80, 443, 53, 22] },
-  { ipAddress: "192.168.1.100", hostname: "my-desktop.local", macAddress: "A1:B2:C3:D4:E5:F6", os: "Windows 11 (Mock)", openPorts: [3389, 8080, 445] },
-  { ipAddress: "192.168.1.101", hostname: "fileserver.lan", macAddress: "12:34:56:78:9A:BC", os: "Linux (Ubuntu Server) (Mock)", openPorts: [22, 445, 80, 443] },
-  { ipAddress: "192.168.1.102", hostname: "iphone-of-user.local", macAddress: "FE:DC:BA:98:76:54", os: "iOS (Mock)", openPorts: [] },
-  { ipAddress: "192.168.1.105", hostname: "printer.corp", macAddress: "AA:BB:CC:DD:EE:FF", os: "Printer OS (Mock)", openPorts: [80, 515, 631, 9100] },
-  { ipAddress: "10.0.0.1", hostname: "gateway.corp", macAddress: "B1:C2:D3:E4:F5:00", os: "FirewallOS (Mock)", openPorts: [22, 443] },
-  { ipAddress: "10.0.0.50", hostname: "dev-vm.corp", macAddress: "C1:D2:E3:F4:05:01", os: "Linux (Dev VM) (Mock)", openPorts: [22, 8000, 9000, 8080] },
+  { ipAddress: "192.168.1.1", hostname: "router.local", macAddress: "00:1A:2B:3C:4D:5E", os: "RouterOS (Mock)", openPorts: [80, 443, 53, 22], deviceType: "router_firewall" },
+  { ipAddress: "192.168.1.100", hostname: "my-desktop.local", macAddress: "A1:B2:C3:D4:E5:F6", os: "Windows 11 (Mock)", openPorts: [3389, 8080, 445], deviceType: "windows_pc" },
+  { ipAddress: "192.168.1.101", hostname: "fileserver.lan", macAddress: "12:34:56:78:9A:BC", os: "Linux (Ubuntu Server) (Mock)", openPorts: [22, 445, 80, 443], deviceType: "linux_server" },
+  { ipAddress: "192.168.1.102", hostname: "iphone-of-user.local", macAddress: "FE:DC:BA:98:76:54", os: "iOS (Mock)", openPorts: [], deviceType: "ios_mobile" },
+  { ipAddress: "192.168.1.103", hostname: "android-tablet.local", macAddress: "AB:CD:EF:12:34:56", os: "Android 13 (Mock)", openPorts: [5555], deviceType: "android_mobile"},
+  { ipAddress: "192.168.1.104", hostname: "dev-laptop.local", macAddress: "C0:FF:EE:00:11:22", os: "Linux (Ubuntu Desktop) (Mock)", openPorts: [22, 3000, 8000], deviceType: "linux_pc"},
+  { ipAddress: "192.168.1.105", hostname: "printer.corp", macAddress: "AA:BB:CC:DD:EE:FF", os: "Printer OS (Mock)", openPorts: [80, 515, 631, 9100], deviceType: "printer" },
+  { ipAddress: "192.168.1.106", hostname: "nas-storage.local", macAddress: "DE:AD:BE:EF:CA:FE", os: "Synology DSM (Linux based) (Mock)", openPorts: [22, 443, 5001, 445], deviceType: "linux_server"}, // or a new "nas" type
+  { ipAddress: "192.168.1.107", hostname: "macbook-pro.local", macAddress: "F0:E1:D2:C3:B4:A5", os: "macOS Sonoma (Mock)", openPorts: [22, 445], deviceType: "macos_pc"},
+  { ipAddress: "10.0.0.1", hostname: "gateway.corp", macAddress: "B1:C2:D3:E4:F5:00", os: "FirewallOS (Mock)", openPorts: [22, 443], deviceType: "router_firewall" },
+  { ipAddress: "10.0.0.50", hostname: "dev-vm.corp", macAddress: "C1:D2:E3:F4:05:01", os: "Linux (Dev VM) (Mock)", openPorts: [22, 8000, 9000, 8080], deviceType: "linux_server" },
 ];
 
 export async function scanNetwork(
@@ -56,6 +79,12 @@ export async function scanNetwork(
       return hostIPNum !== null && hostIPNum >= startIPNum && hostIPNum <= endIPNum;
     });
     
+    // Ensure deviceType is set for filtered hosts if not already set (or re-evaluate for mock)
+    hostsToScan = hostsToScan.map(host => ({
+        ...host,
+        deviceType: host.deviceType || mockDetermineDeviceType(host.os)
+    }));
+
     if (hostsToScan.length === 0) {
         console.log("Mock Service: No hosts to scan in the given range/criteria.");
     }
@@ -74,7 +103,7 @@ export async function scanNetwork(
           openPorts: actualOpenPorts,
         };
         
-        console.log(`Mock Service: Simulating host found: ${hostToSend.ipAddress} with open ports ${JSON.stringify(hostToSend.openPorts)} (scanned for ${JSON.stringify(portsToScan)})`);
+        console.log(`Mock Service: Simulating host found: ${hostToSend.ipAddress} (Type: ${hostToSend.deviceType}) with open ports ${JSON.stringify(hostToSend.openPorts)} (scanned for ${JSON.stringify(portsToScan)})`);
         if (onHostFound) {
           onHostFound(hostToSend);
         }

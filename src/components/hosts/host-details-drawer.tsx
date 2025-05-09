@@ -13,7 +13,8 @@ import {
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
-import { GlobeIcon, HardDriveIcon, ListChecksIcon, RouterIcon, FingerprintIcon, WifiIcon } from 'lucide-react';
+import { GlobeIcon, ListChecksIcon, RouterIcon as NetworkRouterIcon, FingerprintIcon, WifiIcon, TagIcon } from 'lucide-react';
+import { HostIcon } from './host-icon';
 
 interface HostDetailsDrawerProps {
   host: Host | null;
@@ -30,7 +31,7 @@ export function HostDetailsDrawer({ host, isOpen, onOpenChange }: HostDetailsDra
         <div className="flex flex-col h-full">
           <SheetHeader className="p-6 border-b">
             <SheetTitle className="text-2xl flex items-center">
-              <HardDriveIcon className="mr-3 h-7 w-7 text-primary" />
+              <HostIcon deviceType={host.deviceType} className="mr-3 h-7 w-7 text-primary" />
               Host Details
             </SheetTitle>
             <SheetDescription>
@@ -47,12 +48,27 @@ export function HostDetailsDrawer({ host, isOpen, onOpenChange }: HostDetailsDra
                 {host.macAddress && <p><strong>MAC Address:</strong> {host.macAddress}</p>}
               </div>
             </div>
+            
+            {host.deviceType && (
+              <>
+                <Separator />
+                <div className="space-y-2">
+                  <h3 className="text-sm font-medium text-muted-foreground flex items-center">
+                    <TagIcon className="w-4 h-4 mr-2 text-accent" />
+                    Device Type
+                  </h3>
+                  <div className="p-4 bg-secondary/50 rounded-md">
+                    <p className="capitalize">{host.deviceType.replace(/_/g, ' ')}</p>
+                  </div>
+                </div>
+              </>
+            )}
 
             <Separator />
 
             {host.os && (
               <div className="space-y-2">
-                <h3 className="text-sm font-medium text-muted-foreground flex items-center"><RouterIcon className="w-4 h-4 mr-2 text-accent" />Operating System</h3>
+                <h3 className="text-sm font-medium text-muted-foreground flex items-center"><NetworkRouterIcon className="w-4 h-4 mr-2 text-accent" />Operating System</h3>
                  <div className="p-4 bg-secondary/50 rounded-md">
                   <p>{host.os}</p>
                 </div>
@@ -72,7 +88,7 @@ export function HostDetailsDrawer({ host, isOpen, onOpenChange }: HostDetailsDra
                 </div>
               </>
             )}
-             {!host.os && (!host.openPorts || host.openPorts.length === 0) && (
+             {!host.os && (!host.openPorts || host.openPorts.length === 0) && !host.deviceType && (
                  <div className="text-center text-muted-foreground py-4">
                     <WifiIcon className="w-10 h-10 mx-auto mb-2 opacity-50" />
                     <p>No additional details available for this host.</p>
