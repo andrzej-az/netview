@@ -1,3 +1,4 @@
+
 // src/services/network-scanner.ts
 import type { Host } from '@/types/host';
 
@@ -20,8 +21,12 @@ const mockHostsData: Host[] = [
   { ipAddress: "10.0.0.50", hostname: "dev-vm.corp", macAddress: "C1:D2:E3:F4:05:01", os: "Linux (Dev VM) (Mock)", openPorts: [22, 8000, 9000] },
 ];
 
-export async function scanNetwork(rangeInput?: { startIp: string; endIp: string }): Promise<Host[]> {
-  console.log("Mock Service: scanNetwork called");
+export async function scanNetwork(
+  rangeInput?: { startIp: string; endIp: string },
+  onHostFound?: (host: Host) => void,
+  onScanComplete?: () => void
+): Promise<void> {
+  console.log("Mock Service: scanNetwork (streaming) called");
   if (rangeInput) {
     console.log(`Mock Service: Scanning range: ${rangeInput.startIp} - ${rangeInput.endIp}`);
   } else {
@@ -29,27 +34,58 @@ export async function scanNetwork(rangeInput?: { startIp: string; endIp: string 
   }
 
   return new Promise((resolve) => {
-    setTimeout(() => {
-      if (rangeInput) {
-        const startIPNum = ipToUint32(rangeInput.startIp);
-        const endIPNum = ipToUint32(rangeInput.endIp);
+    let hostsToScan = [...mockHostsData]; // Create a mutable copy
 
-        if (startIPNum === null || endIPNum === null) {
-          console.error("Mock Service: Invalid IP range provided to mock scanner.");
-          resolve([]);
-          return;
-        }
+    if (rangeInput) {
+      const startIPNum = ipToUint32(rangeInput.startIp);
+      const endIPNum = ipToUint32(rangeInput.endIp);
 
-        const filteredHosts = mockHostsData.filter(host => {
-          const hostIPNum = ipToUint32(host.ipAddress);
-          return hostIPNum !== null && hostIPNum >= startIPNum && hostIPNum <= endIPNum;
-        });
-        console.log(`Mock Service: Returning ${filteredHosts.length} filtered mock hosts`);
-        resolve(filteredHosts);
-      } else {
-        console.log(`Mock Service: Returning ${mockHostsData.length} mock hosts (full scan)`);
-        resolve(mockHostsData);
+      if (startIPNum === null || endIPNum === null) {
+        console.error("Mock Service: Invalid IP range provided to mock scanner.");
+        if (onScanComplete) onScanComplete();
+        resolve();
+        return;
       }
-    }, 1000); // Simulate network delay
+      hostsToScan = hostsToScan.filter(host => {
+        const hostIPNum = ipToUint32(host.ipAddress);
+        return hostIPNum !== null && hostIPNum >= startIPNum && hostIPNum <= endIPNum;
+      });
+    }
+    
+    if (hostsToScan.length === 0) {
+        console.log("Mock Service: No hosts to scan in the given range/criteria.");
+    }
+
+    let index = 0;
+    function sendHost() {
+      if (index < hostsToScan.length) {
+        const host = hostsToScan[index];
+        console.log(`Mock Service: Simulating host found: ${host.ipAddress}`);
+        if (onHostFound) {
+          onHostFound(host);
+        }
+        index++;
+        setTimeout(sendHost, 300 + Math.random() * 400); // Simulate variable delay
+      } else {
+        console.log("Mock Service: Simulating scan complete");
+        if (onScanComplete) {
+          onScanComplete();
+        }
+        resolve(); 
+      }
+    }
+    
+    // Initial short delay before first host, or immediate completion if no hosts
+    if (hostsToScan.length > 0) {
+        setTimeout(sendHost, 200); 
+    } else {
+        setTimeout(() => { // Ensure onScanComplete is called even if no hosts
+            console.log("Mock Service: Simulating scan complete (no hosts)");
+            if (onScanComplete) {
+              onScanComplete();
+            }
+            resolve();
+        }, 200);
+    }
   });
 }

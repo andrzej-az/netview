@@ -22,6 +22,9 @@ const nextConfig: NextConfig = {
       },
     ],
   },
+  // Set custom port for next dev
+  // Refer to https://nextjs.org/docs/pages/api-reference/next-config-js/dev
+  dev: { port: 9003 },
 };
 
 export default nextConfig;

@@ -1,3 +1,4 @@
+
 package main
 
 import (
@@ -10,6 +11,7 @@ import (
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
+	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 //go:embed all:out
@@ -61,62 +63,79 @@ func ipToUint32(ipStr string) (uint32, error) {
 }
 
 // uint32ToIP converts a uint32 IP representation back to a string.
-func uint32ToIP(ipUint uint32) string {
-	return fmt.Sprintf("%d.%d.%d.%d", byte(ipUint>>24), byte(ipUint>>16), byte(ipUint>>8), byte(ipUint))
-}
+// func uint32ToIP(ipUint uint32) string {
+// 	return fmt.Sprintf("%d.%d.%d.%d", byte(ipUint>>24), byte(ipUint>>16), byte(ipUint>>8), byte(ipUint))
+// }
 
 
-// ScanNetwork simulates a network scan.
-// The 'scanRange' parameter is a pointer to ScanRange to allow it to be nil.
-func (a *App) ScanNetwork(scanRange *ScanRange) ([]Host, error) {
-	// TODO: Implement actual network scanning logic.
-	// This is a placeholder returning mock data.
-	// In a real app, you'd use libraries for ARP scans, port scanning, etc.
-	// For now, we'll just return some mock hosts based on the range or all if no range.
-
-	fmt.Println("Go: ScanNetwork called")
+// ScanNetwork simulates a network scan and emits events.
+// It returns an error if scan initiation fails, nil otherwise.
+func (a *App) ScanNetwork(scanRange *ScanRange) error {
+	fmt.Println("Go: ScanNetwork (streaming) called")
 	if scanRange != nil {
 		fmt.Printf("Go: Scanning range: %s - %s\n", scanRange.StartIP, scanRange.EndIP)
 	} else {
 		fmt.Println("Go: Scanning full network (mock)")
 	}
 	
-	time.Sleep(1500 * time.Millisecond) // Simulate delay
+	// Run the scan in a goroutine to not block the main Wails thread
+	// and allow events to be emitted asynchronously.
+	go func() {
+		// Mock hosts - replace with actual scanning logic
+		allHosts := []Host{
+			{IPAddress: "192.168.1.1", Hostname: "router.local", MACAddress: "00:1A:2B:3C:4D:5E", OS: "RouterOS", OpenPorts: []int{80, 443, 53}},
+			{IPAddress: "192.168.1.100", Hostname: "my-desktop.local", MACAddress: "A1:B2:C3:D4:E5:F6", OS: "Windows 11", OpenPorts: []int{3389, 8080}},
+			{IPAddress: "192.168.1.101", Hostname: "fileserver.lan", MACAddress: "12:34:56:78:9A:BC", OS: "Linux (Ubuntu Server)", OpenPorts: []int{22, 445, 80, 443}},
+			{IPAddress: "192.168.1.102", Hostname: "iphone-of-user.local", MACAddress: "FE:DC:BA:98:76:54", OS: "iOS", OpenPorts: []int{}},
+			{IPAddress: "192.168.1.105", Hostname: "printer.corp", MACAddress: "AA:BB:CC:DD:EE:FF", OS: "Printer OS", OpenPorts: []int{80, 515, 631, 9100}},
+			{IPAddress: "10.0.0.1", Hostname: "gateway.corp", MACAddress: "B1:C2:D3:E4:F5:00", OS: "FirewallOS", OpenPorts: []int{22, 443}},
+			{IPAddress: "10.0.0.50", Hostname: "dev-vm.corp", MACAddress: "C1:D2:E3:F4:05:01", OS: "Linux (Dev VM)", OpenPorts: []int{22, 8000, 9000}},
+		}
 
-	// Mock hosts - replace with actual scanning logic
-	allHosts := []Host{
-		{IPAddress: "192.168.1.1", Hostname: "router.local", MACAddress: "00:1A:2B:3C:4D:5E", OS: "RouterOS", OpenPorts: []int{80, 443, 53}},
-		{IPAddress: "192.168.1.100", Hostname: "my-desktop.local", MACAddress: "A1:B2:C3:D4:E5:F6", OS: "Windows 11", OpenPorts: []int{3389, 8080}},
-		{IPAddress: "192.168.1.101", Hostname: "fileserver.lan", MACAddress: "12:34:56:78:9A:BC", OS: "Linux (Ubuntu Server)", OpenPorts: []int{22, 445, 80, 443}},
-		{IPAddress: "192.168.1.102", Hostname: "iphone-of-user.local", MACAddress: "FE:DC:BA:98:76:54", OS: "iOS", OpenPorts: []int{}},
-		{IPAddress: "192.168.1.105", Hostname: "printer.corp", MACAddress: "AA:BB:CC:DD:EE:FF", OS: "Printer OS", OpenPorts: []int{80, 515, 631, 9100}},
-	}
+		var hostsToScan []Host
+		if scanRange != nil {
+			startIPNum, errStart := ipToUint32(scanRange.StartIP)
+			endIPNum, errEnd := ipToUint32(scanRange.EndIP)
 
-
-	if scanRange != nil {
-		startIPNum, errStart := ipToUint32(scanRange.StartIP)
-		endIPNum, errEnd := ipToUint32(scanRange.EndIP)
-
-		if errStart != nil || errEnd != nil {
-			return nil, fmt.Errorf("invalid IP range: %v, %v", errStart, errEnd)
+			if errStart != nil || errEnd != nil {
+				fmt.Printf("Go: Invalid IP range in goroutine: %v, %v\n", errStart, errEnd)
+				// runtime.EventsEmit(a.ctx, "scanError", fmt.Sprintf("Invalid IP range: %v, %v", errStart, errEnd))
+				runtime.EventsEmit(a.ctx, "scanComplete", false) // success = false
+				return
+			}
+			
+			for _, host := range allHosts {
+				hostIPNum, err := ipToUint32(host.IPAddress)
+				if err != nil {
+					continue // Skip invalid mock hosts
+				}
+				if hostIPNum >= startIPNum && hostIPNum <= endIPNum {
+					hostsToScan = append(hostsToScan, host)
+				}
+			}
+		} else {
+			hostsToScan = allHosts
 		}
 		
-		var filteredHosts []Host
-		for _, host := range allHosts {
-			hostIPNum, err := ipToUint32(host.IPAddress)
-			if err != nil {
-				continue // Skip invalid mock hosts
-			}
-			if hostIPNum >= startIPNum && hostIPNum <= endIPNum {
-				filteredHosts = append(filteredHosts, host)
-			}
+		if len(hostsToScan) == 0 {
+			fmt.Println("Go: No hosts to scan in the given range/criteria.")
 		}
-		fmt.Printf("Go: Returning %d filtered hosts\n", len(filteredHosts))
-		return filteredHosts, nil
-	}
+
+		for i, host := range hostsToScan {
+			fmt.Printf("Go: Emitting hostFound: %s\n", host.IPAddress)
+			runtime.EventsEmit(a.ctx, "hostFound", host)
+			// Simulate delay between finding hosts
+            // Don't sleep after the last host to make scanComplete faster
+            if i < len(hostsToScan) -1 {
+			    time.Sleep(time.Duration(300 + 기본랜덤Seed.Intn(400)) * time.Millisecond) // Random delay
+            }
+		}
+		
+		fmt.Println("Go: Emitting scanComplete")
+		runtime.EventsEmit(a.ctx, "scanComplete", true) // success = true
+	}()
 	
-	fmt.Printf("Go: Returning %d mock hosts (full scan)\n", len(allHosts))
-	return allHosts, nil
+	return nil // Return nil for successful initiation
 }
 
 

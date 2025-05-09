@@ -2,11 +2,11 @@
 'use client';
 
 import type { Host } from '@/types/host';
-// Ensure wails.d.ts is picked up by adding a reference or ensuring it's in tsconfig include paths
+// Ensure wails.d.ts is picked up
 /// <reference types="@/types/wails" />
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { scanNetwork as mockScanNetwork } from '@/services/network-scanner'; 
+import { scanNetwork as mockScanNetworkService } from '@/services/network-scanner';
 import { Header } from '@/components/layout/header';
 import { HostCard } from '@/components/hosts/host-card';
 import { HostListItem } from '@/components/hosts/host-list-item';
@@ -14,7 +14,7 @@ import { HostDetailsDrawer } from '@/components/hosts/host-details-drawer';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Input } from '@/components/ui/input';
-import { Loader2, ServerCrash, RotateCwIcon, WifiOffIcon, ScanSearch, LayoutGrid, List, Search as SearchIcon } from 'lucide-react';
+import { Loader2, ServerCrash, RotateCwIcon, WifiOffIcon, ScanSearch, LayoutGrid, List, Search as SearchIcon, ScanLine } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { isValidIp } from '@/lib/ip-utils';
 import { useToast } from '@/hooks/use-toast';
@@ -24,9 +24,8 @@ export default function HomePage() {
   const [hosts, setHosts] = useState<Host[]>([]);
   const [selectedHost, setSelectedHost] = useState<Host | null>(null);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
-  const [isLoading, setIsLoading] = useState(true); // For full network scan
+  const [isScanning, setIsScanning] = useState(true); // Unified scanning state
   const [error, setError] = useState<string | null>(null);
-  const [isScanningCustomRange, setIsScanningCustomRange] = useState(false); // For custom range scan
 
   const [customStartIp, setCustomStartIp] = useState<string>('');
   const [customEndIp, setCustomEndIp] = useState<string>('');
@@ -56,7 +55,7 @@ export default function HomePage() {
           if (currentEndNetworkPrefix !== startNetworkPrefix) {
             shouldSuggest = true;
           }
-        } else if (!isValidIp(customEndIp)) { 
+        } else if (!isValidIp(customEndIp)) {
           shouldSuggest = true;
         }
       }
@@ -68,58 +67,97 @@ export default function HomePage() {
   }, [customStartIp, customEndIp]);
 
   const fetchHosts = useCallback(async (rangeInput?: { startIp: string; endIp: string }) => {
-    const isCustomScan = !!rangeInput;
-    if (isCustomScan) {
-      setIsScanningCustomRange(true);
-    } else {
-      setIsLoading(true);
-    }
+    const isCustomScanRequest = !!rangeInput;
+
+    setIsScanning(true);
+    setHosts([]); // Clear previous hosts for a new scan
     setError(null);
 
+    if (isCustomScanRequest && rangeInput) {
+      setCurrentScanType('custom');
+      setLastScannedRange(rangeInput);
+    } else {
+      setCurrentScanType('full');
+      setLastScannedRange(null);
+    }
+
     try {
-      let fetchedHostsData: Host[];
-      if (typeof window.go?.main?.App?.ScanNetwork === 'function') {
-        console.log("Using Wails backend for network scan.");
-        const scanParams = isCustomScan ? rangeInput : null;
-        fetchedHostsData = await window.go.main.App.ScanNetwork(scanParams);
+      if (typeof window.go?.main?.App?.ScanNetwork === 'function' && typeof window.runtime?.EventsOn === 'function') {
+        console.log("Using Wails backend for streaming network scan.");
+        // Go function starts the scan; events will update hosts and scanning state.
+        // Listeners are set up in a separate useEffect.
+        await window.go.main.App.ScanNetwork(isCustomScanRequest ? rangeInput : null);
       } else {
-        console.warn("Wails Go backend not available. Using mock network scanner for development.");
-        fetchedHostsData = await mockScanNetwork(rangeInput);
-      }
-      
-      setHosts(fetchedHostsData || []); 
-      if (isCustomScan && rangeInput) {
-        setCurrentScanType('custom');
-        setLastScannedRange(rangeInput);
-      } else {
-        setCurrentScanType('full');
-        setLastScannedRange(null);
+        console.warn("Wails Go backend not available. Using mock streaming network scanner.");
+        await mockScanNetworkService(
+          rangeInput,
+          (host: Host) => { // onHostFound
+            setHosts(prevHosts => {
+              if (prevHosts.find(h => h.ipAddress === host.ipAddress)) return prevHosts;
+              return [...prevHosts, host];
+            });
+          },
+          () => { // onScanComplete
+            setIsScanning(false);
+          }
+        );
       }
     } catch (e: any) {
-      console.error("Failed to scan network:", e);
-      const errorMessage = e?.message || "Failed to scan the network. Please check your connection or try again.";
+      console.error("Failed to initiate network scan:", e);
+      const errorMessage = e?.message || "Failed to start the network scan. Check backend connection.";
       setError(errorMessage);
       toast({
-        title: "Scan Error",
+        title: "Scan Initiation Error",
         description: errorMessage,
         variant: "destructive",
       });
-      setHosts([]); 
-    } finally {
-      if (isCustomScan) {
-        setIsScanningCustomRange(false);
-      } else {
-        setIsLoading(false);
-      }
+      setHosts([]);
+      setIsScanning(false);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [toast]); // Removed customStartIp, customEndIp from deps as they are passed explicitly or not needed for full scan
+  }, [toast]);
 
   useEffect(() => {
     // Initial scan on component mount.
-    // fetchHosts will determine whether to use Wails or mock data.
     fetchHosts();
-  }, [fetchHosts]); 
+  }, [fetchHosts]);
+
+  useEffect(() => {
+    // Wails event listeners
+    let unlistenHostFound: (() => void) | undefined;
+    let unlistenScanComplete: (() => void) | undefined;
+    // let unlistenScanError: (() => void) | undefined; // Example for a dedicated error event
+
+    if (typeof window.runtime?.EventsOn === 'function') {
+      unlistenHostFound = window.runtime.EventsOn('hostFound', (host: Host) => {
+        setHosts(prevHosts => {
+          if (prevHosts.find(h => h.ipAddress === host.ipAddress)) return prevHosts; // Avoid duplicates
+          return [...prevHosts, host];
+        });
+      });
+
+      unlistenScanComplete = window.runtime.EventsOn('scanComplete', (success: boolean) => {
+        setIsScanning(false);
+        if (!success) {
+          console.warn("Scan completed, but Go backend indicated an issue during the scan.");
+          // Potentially set an error if not already set by ScanNetwork call
+           setError(prevError => prevError || "Scan finished with an issue from the backend.");
+        }
+      });
+
+      // Example:
+      // unlistenScanError = window.runtime.EventsOn('scanError', (errorMessage: string) => {
+      //   setError(errorMessage);
+      //   setIsScanning(false);
+      // });
+    }
+
+    return () => {
+      // Cleanup listeners on component unmount
+      if (unlistenHostFound) unlistenHostFound();
+      if (unlistenScanComplete) unlistenScanComplete();
+      // if (unlistenScanError) unlistenScanError();
+    };
+  }, []); // Empty dependency array ensures listeners are set up once and cleaned up on unmount
 
   const handleHostSelect = (host: Host) => {
     setSelectedHost(host);
@@ -132,25 +170,17 @@ export default function HomePage() {
 
   const handleScanFromDialog = () => {
     if (!isValidIp(customStartIp)) {
-      toast({
-        title: "Invalid Input",
-        description: "Start IP address is not valid.",
-        variant: "destructive",
-      });
-      return; 
+      toast({ title: "Invalid Input", description: "Start IP address is not valid.", variant: "destructive" });
+      return;
     }
     if (!isValidIp(customEndIp)) {
-      toast({
-        title: "Invalid Input",
-        description: "End IP address is not valid.",
-        variant: "destructive",
-      });
-      return; 
+      toast({ title: "Invalid Input", description: "End IP address is not valid.", variant: "destructive" });
+      return;
     }
     fetchHosts({ startIp: customStartIp, endIp: customEndIp });
-    setIsCustomRangeDialogOpen(false); 
+    setIsCustomRangeDialogOpen(false);
   };
-  
+
   const HostSkeletonCard = () => (
     <div className="flex flex-col space-y-3 p-4 border rounded-lg shadow">
       <div className="flex items-center space-x-4">
@@ -196,8 +226,6 @@ export default function HomePage() {
     });
   }, [hosts, searchTerm]);
 
-  const currentLoadingState = isLoading || isScanningCustomRange;
-
   return (
     <>
       <Header />
@@ -208,25 +236,26 @@ export default function HomePage() {
               {currentScanType === 'custom' && lastScannedRange
                 ? `Hosts in ${lastScannedRange.startIp} - ${lastScannedRange.endIp}`
                 : 'Detected Hosts (Full Network)'}
+              {isScanning && <span className="text-base font-normal text-muted-foreground ml-2">(Scanning...)</span>}
             </h2>
             <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
-              <Button 
-                onClick={() => setIsCustomRangeDialogOpen(true)} 
-                disabled={currentLoadingState} 
+              <Button
+                onClick={() => setIsCustomRangeDialogOpen(true)}
+                disabled={isScanning}
                 variant="outline"
                 className="w-full sm:w-auto"
               >
                 <ScanSearch className="mr-2 h-4 w-4" />
                 Scan Specific Range
               </Button>
-              <Button 
-                onClick={handleRefreshFullScan} 
-                disabled={currentLoadingState} 
+              <Button
+                onClick={handleRefreshFullScan}
+                disabled={isScanning}
                 variant="outline"
                 className="w-full sm:w-auto"
               >
-                <RotateCwIcon className={`mr-2 h-4 w-4 ${isLoading && !isScanningCustomRange ? 'animate-spin' : ''}`} />
-                {isLoading && !isScanningCustomRange ? 'Scanning Full...' : 'Refresh Full Scan'}
+                <RotateCwIcon className={`mr-2 h-4 w-4 ${isScanning && currentScanType === 'full' ? 'animate-spin' : ''}`} />
+                {isScanning && currentScanType === 'full' ? 'Scanning...' : 'Refresh Full Scan'}
               </Button>
             </div>
           </div>
@@ -240,7 +269,7 @@ export default function HomePage() {
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="pl-10 w-full"
-                disabled={currentLoadingState}
+                disabled={isScanning && hosts.length === 0} // Disable only if initial scan is loading
               />
             </div>
             <div className="flex items-center gap-2 self-end md:self-center">
@@ -248,7 +277,7 @@ export default function HomePage() {
                 variant={viewMode === 'card' ? 'secondary' : 'ghost'}
                 size="icon"
                 onClick={() => setViewMode('card')}
-                disabled={currentLoadingState}
+                disabled={isScanning && hosts.length === 0}
                 aria-label="Card view"
               >
                 <LayoutGrid className="h-5 w-5" />
@@ -257,7 +286,7 @@ export default function HomePage() {
                 variant={viewMode === 'list' ? 'secondary' : 'ghost'}
                 size="icon"
                 onClick={() => setViewMode('list')}
-                disabled={currentLoadingState}
+                disabled={isScanning && hosts.length === 0}
                 aria-label="List view"
               >
                 <List className="h-5 w-5" />
@@ -265,17 +294,8 @@ export default function HomePage() {
             </div>
           </div>
 
-
-          {error && (
-            <Alert variant="destructive" className="mb-6">
-              <ServerCrash className="h-4 w-4" />
-              <AlertTitle>Error Scanning Network</AlertTitle>
-              <AlertDescription>{error}</AlertDescription>
-            </Alert>
-          )}
-
-          {currentLoadingState && !error && (
-            viewMode === 'card' ? (
+          {isScanning && hosts.length === 0 && !error && (
+             viewMode === 'card' ? (
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                 {[...Array(8)].map((_, i) => <HostSkeletonCard key={i} />)}
               </div>
@@ -285,8 +305,24 @@ export default function HomePage() {
               </div>
             )
           )}
+          
+          {isScanning && hosts.length > 0 && (
+             <div className="flex items-center justify-center py-4 text-md text-accent mb-4">
+                <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                Scanning in progress... Hosts will appear below as they are found.
+            </div>
+          )}
 
-          {!currentLoadingState && !error && filteredHosts.length === 0 && (
+
+          {error && (
+            <Alert variant="destructive" className="mb-6">
+              <ServerCrash className="h-4 w-4" />
+              <AlertTitle>Error During Scan</AlertTitle>
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          )}
+          
+          {!isScanning && !error && filteredHosts.length === 0 && (
             <div className="text-center py-10">
               <WifiOffIcon className="mx-auto h-16 w-16 text-muted-foreground mb-4" />
               <p className="text-xl font-medium text-muted-foreground">
@@ -297,7 +333,7 @@ export default function HomePage() {
                   ? 'Try a different filter term or clear the filter.'
                   : currentScanType === 'custom'
                   ? "No hosts found in the specified range."
-                  : "Ensure you are connected to the network and try refreshing, or check if the Wails backend is running."}
+                  : "Scan complete. No hosts detected or ensure Wails backend is running."}
               </p>
               {searchTerm && (
                 <Button variant="link" onClick={() => setSearchTerm('')} className="mt-2">
@@ -307,7 +343,8 @@ export default function HomePage() {
             </div>
           )}
           
-          {!currentLoadingState && !error && filteredHosts.length > 0 && (
+          {/* Always render hosts if available, even during scan, error state is separate */}
+          {filteredHosts.length > 0 && (
             viewMode === 'card' ? (
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                 {filteredHosts.map((host) => (
@@ -338,7 +375,7 @@ export default function HomePage() {
           endIp={customEndIp}
           onEndIpChange={setCustomEndIp}
           onScanRange={handleScanFromDialog}
-          isScanning={isScanningCustomRange}
+          isScanning={isScanning && currentScanType === 'custom'} // Pass true if actively scanning *this* custom range
         />
       </main>
       <footer className="text-center py-4 border-t text-sm text-muted-foreground">
@@ -347,4 +384,3 @@ export default function HomePage() {
     </>
   );
 }
-
