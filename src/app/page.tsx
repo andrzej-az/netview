@@ -149,8 +149,16 @@ export default function HomePage() {
     if (typeof window.runtime?.EventsOn === 'function') {
       unlistenHostFound = window.runtime.EventsOn('hostFound', (host: Host) => {
         setHosts(prevHosts => {
-          if (prevHosts.find(h => h.ipAddress === host.ipAddress)) return prevHosts; 
-          return [...prevHosts, host];
+          // Check if host already exists to prevent duplicates if events are re-emitted or similar
+          if (prevHosts.find(h => h.ipAddress === host.ipAddress)) {
+             // Optionally, update existing host data if needed, though for this app, it's mostly new discoveries
+            return prevHosts.map(h => h.ipAddress === host.ipAddress ? host : h);
+          }
+          return [...prevHosts, host].sort((a, b) => {
+            // Basic IP sorting: convert to numbers for comparison
+            const ipToNum = (ip: string) => ip.split('.').reduce((acc, octet, i) => acc + parseInt(octet) * Math.pow(256, 3 - i), 0);
+            return ipToNum(a.ipAddress) - ipToNum(b.ipAddress);
+          });
         });
       });
 
@@ -277,15 +285,22 @@ export default function HomePage() {
                 onClick={() => setIsHistoryDrawerOpen(true)}
                 variant="outline"
                 className="w-full sm:w-auto"
-                disabled={!settingsLoaded}
+                disabled={!settingsLoaded} // Keep disabled based on settingsLoaded
               >
                 <HistoryIcon className="mr-2 h-4 w-4" />
                 Scan History
               </Button>
             </div>
           </div>
-
-          <div className="sticky top-0 z-10 bg-background py-4 mb-6">
+          {/* The sticky container's top value should account for the custom title bar (h-8 = 2rem) 
+              AND the main app header below it if that header is also fixed/sticky.
+              Assuming the main <Header/> is not sticky, top-8 (for title bar) is fine.
+              If <Header/> from layout becomes sticky, this top value needs to be adjusted further.
+              Current <Header/> is part of the scrollable content flow so top-[calc(2rem)] (for title bar) is enough.
+              The `pt-8` on `RootLayout`'s main div already pushes content down.
+              So, `top-0` for this sticky bar means it sticks to the top of the scrollable main content area.
+          */}
+          <div className="sticky top-0 z-10 bg-background py-4 mb-6 shadow-sm">
             <div className="flex flex-col md:flex-row justify-between items-center gap-4">
               <div className="relative w-full md:flex-grow">
                 <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />

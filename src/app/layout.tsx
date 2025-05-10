@@ -4,6 +4,7 @@ import { Geist, Geist_Mono } from 'next/font/google';
 import './globals.css';
 import { Toaster } from '@/components/ui/toaster';
 import { ThemeProvider } from '@/components/theme/theme-provider';
+import { CustomTitlebar } from '@/components/layout/custom-titlebar';
 
 const geistSans = Geist({
   variable: '--font-geist-sans',
@@ -32,7 +33,8 @@ export default function RootLayout({
           defaultTheme="system"
           storageKey="netview-theme"
         >
-          <div className="flex flex-col min-h-screen">
+          <CustomTitlebar />
+          <div className="flex flex-col min-h-screen pt-8"> {/* Added pt-8 for CustomTitlebar height */}
             {children}
           </div>
           <Toaster />
@@ -41,3 +43,4 @@ export default function RootLayout({
     </html>
   );
 }
+

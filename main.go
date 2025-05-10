@@ -39,8 +39,8 @@ func (a *App) startup(ctx context.Context) {
 // ScanNetwork now accepts a pointer to ScanRange, which may include IPs and/or Ports.
 // If scanRange is nil, or if fields within are zero-valued, PerformScan handles defaults.
 func (a *App) ScanNetwork(scanRange *ScanRange) error {
-	// If scanRange is nil (e.g. from a frontend call with `null`), PerformScan should handle it.
-	// Or, if scanRange is an empty struct (e.g. `{}` from frontend), specific fields like Ports might be set.
+	// If scanRange is nil (e.g., from a frontend call with `null`), PerformScan should handle it.
+	// Or, if scanRange is an empty struct (e.g., `{}` from frontend), specific fields like Ports might be set.
 	return PerformScan(scanRange)
 }
 
@@ -56,10 +56,11 @@ func main() {
 		Title:  "NetView - Network Scanner",
 		Width:  1024,
 		Height: 768,
+		Frameless: true, // Enable frameless window for custom title bar
 		AssetServer: &assetserver.Options{
 			Assets: assets,
 		},
-		BackgroundColour: &options.RGBA{R: 27, G: 38, B: 54, A: 1}, // Dark background
+		BackgroundColour: &options.RGBA{R: 27, G: 38, B: 54, A: 1}, // Dark background, can be adjusted
 		OnStartup:        app.startup,
 		Bind: []interface{}{
 			app, // Binding the app instance makes all its methods (like ScanNetwork, GetScanHistory) available to the frontend.
@@ -70,3 +71,4 @@ func main() {
 		println("Error:", err.Error())
 	}
 }
+

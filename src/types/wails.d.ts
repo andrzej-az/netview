@@ -35,11 +35,19 @@ declare global {
         };
       };
     };
-    // Wails runtime functions for events, etc.
+    // Wails runtime functions for events, window manipulation, etc.
     runtime: {
       EventsOn: (eventName: string, callback: (...data: any) => void) => () => void;
       EventsEmit: (eventName: string, ...data: any) => void;
-      // Add other runtime functions if needed by the app
+      WindowMinimise?: () => void;
+      WindowToggleMaximise?: () => Promise<void>; // Can be async
+      Quit?: () => void;
+      WindowIsMaximised?: () => Promise<boolean>; // Can be async
+      // Add other runtime functions as needed by the app
+      // For example, if using other functions from frontend/wailsjs/runtime/runtime.js:
+      // WindowCenter?: () => void;
+      // WindowSetTitle?: (title: string) => void;
+      // ... etc.
     };
     WailsInvoke: (method: string, ...args: any[]) => Promise<any>;
   }
