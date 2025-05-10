@@ -254,7 +254,7 @@ export default function HomePage() {
   return (
     <>
       <Header onSettingsClick={() => setIsSettingsDialogOpen(true)} />
-      <main className="flex-grow container mx-auto p-4 md:p-8 space-y-8">
+      <main className="flex-grow container mx-auto p-4 md:px-8 md:pt-8 space-y-8">
         <div>
           <div className="flex flex-col sm:flex-row justify-between items-center mb-6 gap-4">
             <h2 className="text-2xl font-semibold text-foreground">
@@ -285,37 +285,39 @@ export default function HomePage() {
             </div>
           </div>
 
-          <div className="flex flex-col md:flex-row justify-between items-center mb-6 gap-4">
-            <div className="relative w-full md:flex-grow">
-              <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
-              <Input
-                type="text"
-                placeholder="Filter by IP, hostname, MAC..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10 w-full"
-                disabled={(!scannedRangeTitle && hosts.length === 0) || (isScanning && hosts.length === 0) || !settingsLoaded} 
-              />
-            </div>
-            <div className="flex items-center gap-2 self-end md:self-center">
-              <Button
-                variant={viewMode === 'card' ? 'secondary' : 'ghost'}
-                size="icon"
-                onClick={() => setViewMode('card')}
-                disabled={(!scannedRangeTitle && hosts.length === 0) || (isScanning && hosts.length === 0) || !settingsLoaded}
-                aria-label="Card view"
-              >
-                <LayoutGrid className="h-5 w-5" />
-              </Button>
-              <Button
-                variant={viewMode === 'list' ? 'secondary' : 'ghost'}
-                size="icon"
-                onClick={() => setViewMode('list')}
-                disabled={(!scannedRangeTitle && hosts.length === 0) || (isScanning && hosts.length === 0) || !settingsLoaded}
-                aria-label="List view"
-              >
-                <List className="h-5 w-5" />
-              </Button>
+          <div className="sticky top-0 z-10 bg-background py-4 mb-6">
+            <div className="flex flex-col md:flex-row justify-between items-center gap-4">
+              <div className="relative w-full md:flex-grow">
+                <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
+                <Input
+                  type="text"
+                  placeholder="Filter by IP, hostname, MAC..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-10 w-full"
+                  disabled={(!scannedRangeTitle && hosts.length === 0) || (isScanning && hosts.length === 0) || !settingsLoaded} 
+                />
+              </div>
+              <div className="flex items-center gap-2 self-end md:self-center">
+                <Button
+                  variant={viewMode === 'card' ? 'secondary' : 'ghost'}
+                  size="icon"
+                  onClick={() => setViewMode('card')}
+                  disabled={(!scannedRangeTitle && hosts.length === 0) || (isScanning && hosts.length === 0) || !settingsLoaded}
+                  aria-label="Card view"
+                >
+                  <LayoutGrid className="h-5 w-5" />
+                </Button>
+                <Button
+                  variant={viewMode === 'list' ? 'secondary' : 'ghost'}
+                  size="icon"
+                  onClick={() => setViewMode('list')}
+                  disabled={(!scannedRangeTitle && hosts.length === 0) || (isScanning && hosts.length === 0) || !settingsLoaded}
+                  aria-label="List view"
+                >
+                  <List className="h-5 w-5" />
+                </Button>
+              </div>
             </div>
           </div>
 
@@ -438,3 +440,4 @@ export default function HomePage() {
     </>
   );
 }
+
