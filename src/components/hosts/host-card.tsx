@@ -24,8 +24,6 @@ export function HostCard({ host, onSelect }: HostCardProps) {
         <div> {/* Wrapper for content above the button */}
           <div className="text-xs text-muted-foreground mb-2">
             {host.macAddress && <p>MAC: {host.macAddress}</p>}
-            {host.os && <p>OS: {host.os}</p>}
-            {host.deviceType && <p className="capitalize">Type: {host.deviceType.replace(/_/g, ' ')}</p>}
           </div>
 
           {host.openPorts && host.openPorts.length > 0 && (
