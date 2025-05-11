@@ -16,7 +16,7 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Input } from '@/components/ui/input';
 import { Loader2, ServerCrash, WifiOffIcon, ScanSearch, LayoutGrid, List, Search as SearchIcon, History as HistoryIcon, ScanLine } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
-import { isValidIp } from '@/lib/ip-utils';
+import { isValidIp, isValidOctet } from '@/lib/ip-utils';
 import { useToast } from '@/hooks/use-toast';
 import { CustomRangeDialog } from '@/components/network/custom-range-dialog';
 import { ScanHistoryDrawer } from '@/components/history/scan-history-drawer';
@@ -47,31 +47,67 @@ export default function HomePage() {
   const { effectivePorts, isLoaded: settingsLoaded } = useSettings();
 
   useEffect(() => {
-    if (isValidIp(customStartIp)) {
-      const startParts = customStartIp.split('.');
-      const suggestedEndIp = `${startParts[0]}.${startParts[1]}.${startParts[2]}.255`;
+    const startOctets = customStartIp.split('.');
+    // Ensure startOctets has 4 elements, padding with empty strings if necessary for consistent processing
+    while (startOctets.length < 4) startOctets.push('');
+    startOctets.length = 4; // Ensure it's exactly 4 elements
 
-      let shouldSuggest = false;
-      if (customEndIp === '') {
-        shouldSuggest = true;
-      } else {
-        const currentEndParts = customEndIp.split('.');
-        if (currentEndParts.length === 4 && currentEndParts[3] === '255') {
-          const currentEndNetworkPrefix = `${currentEndParts[0]}.${currentEndParts[1]}.${currentEndParts[2]}`;
-          const startNetworkPrefix = `${startParts[0]}.${startParts[1]}.${startParts[2]}`;
-          if (currentEndNetworkPrefix !== startNetworkPrefix) {
-            shouldSuggest = true;
-          }
-        } else if (!isValidIp(customEndIp)) {
-          shouldSuggest = true;
-        }
-      }
-
-      if (shouldSuggest) {
-        setCustomEndIp(suggestedEndIp);
-      }
+    // If the first octet of startIP is empty, don't attempt to suggest EndIP changes based on it.
+    if (startOctets[0].trim() === '') {
+        // Optionally, if Start IP becomes completely empty, one might choose to clear End IP or leave it.
+        // For now, we only act if Start IP has content.
+        return;
     }
-  }, [customStartIp, customEndIp]);
+    
+    const currentEndOctetsRaw = customEndIp.split('.');
+    // Ensure currentEndOctetsRaw has 4 elements for consistent processing
+    while (currentEndOctetsRaw.length < 4) currentEndOctetsRaw.push('');
+    currentEndOctetsRaw.length = 4;
+
+    let newEndOctets = [...currentEndOctetsRaw]; // Create a mutable copy from current end IP state
+    let ipChanged = false;
+
+    // Sync A, B, C octets of EndIP with StartIP
+    for (let i = 0; i < 3; i++) {
+        // Update EndIP's octet if StartIP's octet is validly formed (can be empty string for deletion effect)
+        // and is different from EndIP's current corresponding octet.
+        if (startOctets[i] !== newEndOctets[i]) {
+          // Allow empty start octet to clear corresponding end octet
+          if (startOctets[i] === '' || isValidOctet(startOctets[i])) {
+            newEndOctets[i] = startOctets[i];
+            ipChanged = true;
+          }
+        }
+    }
+
+    // D octet logic for EndIP:
+    // If StartIP's A, B, C octets are all validly filled:
+    if (isValidOctet(startOctets[0]) && isValidOctet(startOctets[1]) && isValidOctet(startOctets[2])) {
+        // And if the D octet of the *original* customEndIp was empty or '255' (indicating it was default or ready for suggestion)
+        if (currentEndOctetsRaw[3] === '' || currentEndOctetsRaw[3] === '255') {
+            // Then, set the D octet of newEndOctets to '255', if it's not already.
+            if (newEndOctets[3] !== '255') {
+                newEndOctets[3] = '255';
+                ipChanged = true;
+            }
+        }
+        // If currentEndOctetsRaw[3] was something specific (e.g., "50"), newEndOctets[3] would have inherited that value,
+        // and this block wouldn't change it, thus preserving user's specific End D octet.
+    } else {
+        // If Start IP's A.B.C prefix is not fully valid, don't force End D to 255.
+        // If End D was '255' and Start A.B.C becomes incomplete, End D might get cleared if an earlier Start octet was cleared.
+        // e.g. if startC clears, newEndC clears, and newEndD stays as it was (could be '255' or user value).
+        // This behavior is generally fine as user is editing.
+    }
+
+    if (ipChanged) {
+        const finalNewEndIp = newEndOctets.join('.');
+        if (finalNewEndIp !== customEndIp) {
+            setCustomEndIp(finalNewEndIp);
+        }
+    }
+  }, [customStartIp]); // Only react to changes in customStartIp
+
 
   const fetchHosts = useCallback(async (rangeInput: { startIp: string; endIp: string }) => {
     if (!settingsLoaded) {
