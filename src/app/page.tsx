@@ -16,7 +16,7 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Input } from '@/components/ui/input';
 import { Loader2, ServerCrash, WifiOffIcon, ScanSearch, LayoutGrid, List, Search as SearchIcon, History as HistoryIcon, ScanLine } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
-import { isValidIp, isValidOctet } from '@/lib/ip-utils';
+import { isValidIp, isValidOctet, ipToNumber } from '@/lib/ip-utils';
 import { useToast } from '@/hooks/use-toast';
 import { CustomRangeDialog } from '@/components/network/custom-range-dialog';
 import { ScanHistoryDrawer } from '@/components/history/scan-history-drawer';
@@ -101,12 +101,12 @@ export default function HomePage() {
         });
         return;
     }
-    // Validation for rangeInput content is done in handleScanFromDialog before calling fetchHosts
-
+    
     setIsScanning(true);
     setHosts([]); 
     setError(null);
-    setScannedRangeTitle(rangeInput); 
+    // Use the processed IPs for the title
+    setScannedRangeTitle({ startIp: rangeInput.startIp, endIp: rangeInput.endIp }); 
     
     const scanParameters: WailsScanParameters = { 
         startIp: rangeInput.startIp, 
@@ -164,8 +164,10 @@ export default function HomePage() {
             return prevHosts.map(h => h.ipAddress === host.ipAddress ? host : h);
           }
           return [...prevHosts, host].sort((a, b) => {
-            const ipToNum = (ip: string) => ip.split('.').reduce((acc, octet, i) => acc + parseInt(octet) * Math.pow(256, 3 - i), 0);
-            return ipToNum(a.ipAddress) - ipToNum(b.ipAddress);
+            const ipNumA = ipToNumber(a.ipAddress);
+            const ipNumB = ipToNumber(b.ipAddress);
+            if (ipNumA === null || ipNumB === null) return 0; // Should not happen with valid IPs
+            return ipNumA - ipNumB;
           });
         });
       });
@@ -203,39 +205,85 @@ export default function HomePage() {
   };
 
   const handleScanFromDialog = (): boolean => {
-    if (!isValidIp(customStartIp)) {
-      toast({ title: "Invalid Input", description: "Start IP address is not valid.", variant: "destructive" });
-      return false; // Validation failed
-    }
-    if (!isValidIp(customEndIp)) {
-      toast({ title: "Invalid Input", description: "End IP address is not valid.", variant: "destructive" });
-      return false; // Validation failed
-    }
-    // Add logic for startIP <= endIP if necessary
-    // For example:
-    // const start = ipToNumber(customStartIp);
-    // const end = ipToNumber(customEndIp);
-    // if (start > end) {
-    //   toast({ title: "Invalid Range", description: "Start IP cannot be greater than End IP.", variant: "destructive" });
-    //   return false;
-    // }
+    let sIp = customStartIp;
+    let eIp = customEndIp;
 
-    fetchHosts({ startIp: customStartIp, endIp: customEndIp });
-    setIsCustomRangeDialogOpen(false); // Close dialog on successful validation and scan initiation
-    return true; // Validation passed
+    const sIpPartsRaw = sIp.split('.');
+    while (sIpPartsRaw.length < 4) sIpPartsRaw.push('');
+    const finalStartIpParts = sIpPartsRaw.slice(0, 4).map(part => (part.trim() === '' ? '0' : part.trim()));
+    const finalStartIp = finalStartIpParts.join('.');
+
+    const eIpPartsRaw = eIp.split('.');
+    while (eIpPartsRaw.length < 4) eIpPartsRaw.push('');
+    const finalEndIpParts = eIpPartsRaw.slice(0, 4).map((part, index) => {
+      const trimmedPart = part.trim();
+      if (trimmedPart === '') {
+        return index === 3 ? '255' : '0';
+      }
+      return trimmedPart;
+    });
+    const finalEndIp = finalEndIpParts.join('.');
+
+    if (!isValidIp(finalStartIp)) {
+      toast({ title: "Invalid Input", description: "Start IP address is not valid. Empty octets were treated as '0'.", variant: "destructive" });
+      return false; 
+    }
+    if (!isValidIp(finalEndIp)) {
+      toast({ title: "Invalid Input", description: "End IP address is not valid. Empty octets were treated as '0' (or '255' for the last octet).", variant: "destructive" });
+      return false; 
+    }
+
+    const startNum = ipToNumber(finalStartIp);
+    const endNum = ipToNumber(finalEndIp);
+
+    if (startNum === null || endNum === null || startNum > endNum) {
+      toast({ title: "Invalid Range", description: "Start IP cannot be greater than End IP after processing.", variant: "destructive" });
+      return false;
+    }
+
+    fetchHosts({ startIp: finalStartIp, endIp: finalEndIp });
+    // The title will be updated by fetchHosts using the processed IPs.
+    // Do not set customStartIp/customEndIp state here, as it would change the dialog's input fields.
+    setIsCustomRangeDialogOpen(false); 
+    return true; 
   };
 
   const handleRescanFromHistory = (startIp: string, endIp: string) => {
+    // Set the IP fields in the dialog to the history item's values
     setCustomStartIp(startIp);
     setCustomEndIp(endIp);
-    // Directly call fetchHosts or go through validation again if needed
-    // For consistency, could call a wrapper that validates then fetches.
-    // For now, assuming history items are valid.
-    if (isValidIp(startIp) && isValidIp(endIp)) {
-        fetchHosts({ startIp, endIp });
-    } else {
-        toast({ title: "Invalid History Item", description: "The selected history item has an invalid IP range.", variant: "destructive" });
+
+    // Validate and fetch. Use the same processing as handleScanFromDialog would.
+    // This ensures consistency if the history item itself was somehow incomplete (though unlikely).
+    const sIpPartsRaw = startIp.split('.');
+    while (sIpPartsRaw.length < 4) sIpPartsRaw.push('');
+    const finalStartIpParts = sIpPartsRaw.slice(0, 4).map(part => (part.trim() === '' ? '0' : part.trim()));
+    const finalHistStartIp = finalStartIpParts.join('.');
+
+    const eIpPartsRaw = endIp.split('.');
+    while (eIpPartsRaw.length < 4) eIpPartsRaw.push('');
+    const finalEndIpParts = eIpPartsRaw.slice(0, 4).map((part, index) => {
+      const trimmedPart = part.trim();
+      if (trimmedPart === '') {
+        return index === 3 ? '255' : '0';
+      }
+      return trimmedPart;
+    });
+    const finalHistEndIp = finalEndIpParts.join('.');
+
+
+    if (!isValidIp(finalHistStartIp) || !isValidIp(finalHistEndIp)) {
+        toast({ title: "Invalid History Item", description: "The selected history item has an invalid IP range after processing.", variant: "destructive" });
+        return;
     }
+    const startNum = ipToNumber(finalHistStartIp);
+    const endNum = ipToNumber(finalHistEndIp);
+    if (startNum === null || endNum === null || startNum > endNum) {
+        toast({ title: "Invalid History Range", description: "Start IP cannot be greater than End IP in history item.", variant: "destructive" });
+        return;
+    }
+    
+    fetchHosts({ startIp: finalHistStartIp, endIp: finalHistEndIp });
   };
 
 
@@ -473,3 +521,4 @@ export default function HomePage() {
     </>
   );
 }
+

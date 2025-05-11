@@ -27,3 +27,20 @@ export function isValidOctet(octet: string): boolean {
   const num = parseInt(octet, 10);
   return num >= 0 && num <= 255;
 }
+
+/**
+ * Converts an IPv4 address string to its numerical representation.
+ * @param ip The IPv4 string.
+ * @returns The numerical representation, or null if the IP is invalid.
+ */
+export function ipToNumber(ip: string): number | null {
+  if (!isValidIp(ip)) {
+    return null;
+  }
+  const parts = ip.split('.').map(Number);
+  // This check is redundant due to isValidIp but good for safety
+  if (parts.some(isNaN) || parts.length !== 4) {
+    return null;
+  }
+  return (parts[0] * Math.pow(256, 3)) + (parts[1] * Math.pow(256, 2)) + (parts[2] * 256) + parts[3];
+}
