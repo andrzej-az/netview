@@ -12,7 +12,6 @@ export function CustomTitlebar() {
 
   useEffect(() => {
     setIsClient(true);
-    // Check if Wails environment specific functions are available
     if (typeof window.runtime?.WindowMinimise === 'function') {
       setIsWailsEnv(true);
     }
@@ -32,10 +31,6 @@ export function CustomTitlebar() {
   useEffect(() => {
     if (isClient && isWailsEnv) {
       updateMaximisedState();
-      // Wails does not emit a standard "resize" or "maximize" event for the window frame
-      // that JS can easily listen to. Polling or using a custom Wails event would be
-      // necessary for real-time updates if the window is maximized by OS controls.
-      // For simplicity, we update on toggle and assume Go's state is authoritative.
     }
   }, [isClient, isWailsEnv, updateMaximisedState]);
 
@@ -44,7 +39,7 @@ export function CustomTitlebar() {
     if (isWailsEnv && typeof window.runtime?.WindowToggleMaximise === 'function') {
       try {
         await window.runtime.WindowToggleMaximise();
-        setTimeout(updateMaximisedState, 150); // Give Wails time to process
+        setTimeout(updateMaximisedState, 150); 
       } catch (e) {
         console.error("Failed to toggle maximize window:", e);
       }
@@ -77,14 +72,19 @@ export function CustomTitlebar() {
     }
   };
   
-  if (!isClient) {
+  if (!isClient && !isWailsEnv) { // Show placeholder only if not wails and not client
     // Placeholder to maintain layout space during SSR or before client-side check
-    // Ensure z-index matches the actual component for consistency.
-    return <div className="h-8 bg-background fixed top-0 left-0 right-0 z-[101] print:hidden" />;
+    return <div className="h-8 bg-background print:hidden" />;
   }
 
+
   return (
-    <div className="h-8 bg-background text-foreground flex items-center justify-between border-b fixed top-0 left-0 right-0 z-[101] print:hidden">
+    // Removed: fixed top-0 left-0 right-0 z-[101]
+    // Added: position: relative and z-index to ensure it's above some elements but can be overlaid by high-z-index fixed elements.
+    // However, for sheets to overlay it, it should generally not have a z-index if it's static.
+    // Or, if it needs to be above some relative/sticky content, then relative and a z-index might be useful.
+    // For now, let it be a simple block element in the flex flow.
+    <div className="h-8 bg-background text-foreground flex items-center justify-between border-b print:hidden">
       {/* Draggable Area and Title */}
       <div data-wails-drag className="flex-grow h-full flex items-center px-3 select-none">
         <AppIcon className="h-4 w-4 mr-2 text-primary" />
@@ -93,7 +93,7 @@ export function CustomTitlebar() {
 
       {/* Window Controls: Render only if in Wails environment */}
       {isWailsEnv && (
-        <div className="flex items-center"> {/* This container's z-index is relative to its parent */}
+        <div className="flex items-center">
           <Button
             variant="ghost"
             size="icon"

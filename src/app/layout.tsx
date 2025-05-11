@@ -33,18 +33,18 @@ export default function RootLayout({
           defaultTheme="system"
           storageKey="netview-theme"
         >
-          <CustomTitlebar />
-          {/* 
-            This div is the main scrollable area for the application content.
-            - h-screen: Sets its height to the full viewport height.
-            - pt-8: Adds 2rem padding at the top to make space for the CustomTitlebar (which is h-8).
-            - overflow-y-auto: Makes this div scrollable if its content exceeds its height.
-            This setup ensures that `position: sticky` elements inside `children` 
-            will stick relative to this div. For example, `sticky top-0` inside a child 
-            will stick to the top of this div's content area, which is 2rem below the viewport top.
-          */}
-          <div className="flex flex-col h-screen pt-8 overflow-y-auto">
-            {children}
+          <div className="flex flex-col h-screen">
+            <CustomTitlebar />
+            {/* 
+              This div is the main scrollable area for the application content.
+              - flex-1: Takes up remaining vertical space in the flex column.
+              - overflow-y-auto: Makes this div scrollable if its content exceeds its height.
+              - flex flex-col: Ensures children (like Header, main, Footer from page.tsx) stack correctly.
+              This setup ensures that the scrollbar for this area starts below the CustomTitlebar.
+            */}
+            <div className="flex flex-col flex-1 overflow-y-auto">
+              {children}
+            </div>
           </div>
           <Toaster />
         </ThemeProvider>

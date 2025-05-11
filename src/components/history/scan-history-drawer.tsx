@@ -81,7 +81,8 @@ export const ScanHistoryDrawer: FC<ScanHistoryDrawerProps> = ({
     <Sheet open={isOpen} onOpenChange={onOpenChange}>
       <SheetContent 
         side="right" 
-        className="w-[350px] sm:w-[400px] p-0 flex flex-col mt-8 h-[calc(100vh-2rem)]" // Added mt-8 and adjusted height
+        // Removed mt-8 and h-[calc(100vh-2rem)]
+        className="w-[350px] sm:w-[400px] p-0 flex flex-col" 
       >
         <SheetHeader className="p-6 border-b">
           <SheetTitle className="flex items-center text-xl">
@@ -116,7 +117,7 @@ export const ScanHistoryDrawer: FC<ScanHistoryDrawerProps> = ({
             {!isLoading && !error && historyItems.length > 0 && (
               historyItems.map((item, index) => (
                 <Button
-                  key={`${item.startIp}-${item.endIp}-${item.timestamp}-${index}`} // More unique key
+                  key={`${item.startIp}-${item.endIp}-${item.timestamp}-${index}`} 
                   variant="outline"
                   className="w-full justify-start h-auto py-3 px-4 text-left hover:bg-accent/50 focus-visible:bg-accent/50"
                   onClick={() => handleRescanClick(item)}

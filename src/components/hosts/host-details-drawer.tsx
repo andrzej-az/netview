@@ -29,7 +29,8 @@ export function HostDetailsDrawer({ host, isOpen, onOpenChange }: HostDetailsDra
   return (
     <Sheet open={isOpen} onOpenChange={onOpenChange}>
       <SheetContent 
-        className="sm:max-w-lg w-[90vw] p-0 mt-8 h-[calc(100vh-2rem)] flex flex-col" // Added mt-8, adjusted height, and flex structure
+        // Removed mt-8 and h-[calc(100vh-2rem)]
+        className="sm:max-w-lg w-[90vw] p-0 flex flex-col" 
       >
           <SheetHeader className="p-6 border-b">
             <SheetTitle className="text-2xl flex items-center">
