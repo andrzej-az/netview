@@ -2,20 +2,24 @@
 'use client';
 
 import { Minus, Square, X as LucideX, Maximize2, Minimize2, Network as AppIcon } from 'lucide-react';
-// Removed direct import: import { WindowMinimise, WindowToggleMaximise, Quit, WindowIsMaximised } from 'frontend/wailsjs/runtime';
 import { useEffect, useState, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 
 export function CustomTitlebar() {
   const [isMaximized, setIsMaximized] = useState(false);
   const [isClient, setIsClient] = useState(false);
+  const [isWailsEnv, setIsWailsEnv] = useState(false);
 
   useEffect(() => {
     setIsClient(true);
+    // Check if Wails environment specific functions are available
+    if (typeof window.runtime?.WindowMinimise === 'function') {
+      setIsWailsEnv(true);
+    }
   }, []);
 
   const updateMaximisedState = useCallback(async () => {
-    if (typeof window.runtime?.WindowIsMaximised === 'function') {
+    if (isWailsEnv && typeof window.runtime?.WindowIsMaximised === 'function') {
       try {
         const maximised = await window.runtime.WindowIsMaximised();
         setIsMaximized(maximised);
@@ -23,23 +27,24 @@ export function CustomTitlebar() {
         console.error("Failed to get window maximization state:", e);
       }
     }
-  }, []);
+  }, [isWailsEnv]);
 
   useEffect(() => {
-    if (isClient) {
+    if (isClient && isWailsEnv) {
       updateMaximisedState();
-      // Optional: Listen for resize or specific Wails events if maximization can change externally
-      // and updateMaximisedState accordingly.
+      // Wails does not emit a standard "resize" or "maximize" event for the window frame
+      // that JS can easily listen to. Polling or using a custom Wails event would be
+      // necessary for real-time updates if the window is maximized by OS controls.
+      // For simplicity, we update on toggle and assume Go's state is authoritative.
     }
-  }, [isClient, updateMaximisedState]);
+  }, [isClient, isWailsEnv, updateMaximisedState]);
 
 
   const handleToggleMaximize = async () => {
-    if (typeof window.runtime?.WindowToggleMaximise === 'function') {
+    if (isWailsEnv && typeof window.runtime?.WindowToggleMaximise === 'function') {
       try {
         await window.runtime.WindowToggleMaximise();
-        // Wails may not immediately reflect the change, a slight delay can help
-        setTimeout(updateMaximisedState, 150); 
+        setTimeout(updateMaximisedState, 150); // Give Wails time to process
       } catch (e) {
         console.error("Failed to toggle maximize window:", e);
       }
@@ -49,7 +54,7 @@ export function CustomTitlebar() {
   };
 
   const handleMinimize = () => {
-    if (typeof window.runtime?.WindowMinimise === 'function') {
+    if (isWailsEnv && typeof window.runtime?.WindowMinimise === 'function') {
         try {
             window.runtime.WindowMinimise();
         } catch (e) {
@@ -61,7 +66,7 @@ export function CustomTitlebar() {
   };
 
   const handleClose = () => {
-    if (typeof window.runtime?.Quit === 'function') {
+    if (isWailsEnv && typeof window.runtime?.Quit === 'function') {
         try {
             window.runtime.Quit();
         } catch (e) {
@@ -72,9 +77,8 @@ export function CustomTitlebar() {
     }
   };
   
-  // Render a placeholder or nothing until client-side effects determine Wails availability
   if (!isClient) {
-    // This div helps maintain layout space, crucial for `pt-8` in RootLayout
+    // Placeholder to maintain layout space during SSR or before client-side check
     return <div className="h-8 bg-background fixed top-0 left-0 right-0 z-[60] print:hidden" />;
   }
 
@@ -86,8 +90,8 @@ export function CustomTitlebar() {
         <span className="text-xs font-medium">NetView - Network Scanner</span>
       </div>
 
-      {/* Window Controls: Render only if Wails runtime functions are likely available */}
-      {typeof window.runtime?.WindowMinimise === 'function' && (
+      {/* Window Controls: Render only if in Wails environment */}
+      {isWailsEnv && (
         <div className="flex items-center">
           <Button
             variant="ghost"
@@ -121,4 +125,3 @@ export function CustomTitlebar() {
     </div>
   );
 }
-

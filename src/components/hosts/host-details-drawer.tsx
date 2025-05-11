@@ -1,3 +1,4 @@
+
 'use client';
 
 import type { Host } from '@/types/host';
@@ -27,8 +28,9 @@ export function HostDetailsDrawer({ host, isOpen, onOpenChange }: HostDetailsDra
 
   return (
     <Sheet open={isOpen} onOpenChange={onOpenChange}>
-      <SheetContent className="sm:max-w-lg w-[90vw] p-0">
-        <div className="flex flex-col h-full">
+      <SheetContent 
+        className="sm:max-w-lg w-[90vw] p-0 mt-8 h-[calc(100vh-2rem)] flex flex-col" // Added mt-8, adjusted height, and flex structure
+      >
           <SheetHeader className="p-6 border-b">
             <SheetTitle className="text-2xl flex items-center">
               <HostIcon deviceType={host.deviceType} className="mr-3 h-7 w-7 text-primary" />
@@ -102,7 +104,6 @@ export function HostDetailsDrawer({ host, isOpen, onOpenChange }: HostDetailsDra
               <Button type="button" variant="outline">Close</Button>
             </SheetClose>
           </SheetFooter>
-        </div>
       </SheetContent>
     </Sheet>
   );
