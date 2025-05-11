@@ -3,16 +3,18 @@ package main
 
 import (
 	"context"
+	"errors" // For errors.Is
 	"fmt"
 	"net"
 	"strings"
 	"sync"
+	"syscall" // For syscall.ECONNREFUSED
 	"time"
 
-	"golang.org/x/net/icmp"
-	"golang.org/x/net/ipv4"
-
 	"github.com/wailsapp/wails/v2/pkg/runtime"
+	// ICMP related imports are no longer needed as isHostAlive now uses TCP
+	// "golang.org/x/net/icmp"
+	// "golang.org/x/net/ipv4"
 )
 
 // Host struct matching TypeScript Host type
@@ -36,8 +38,8 @@ var appCtx context.Context
 var defaultPortsToScan = []int{22, 80, 443, 8080, 445} // Default ports if not specified by user
 
 const (
-	pingTimeout     = 1 * time.Second
-	portScanTimeout = 500 * time.Millisecond 
+	tcpPingTimeout  = 1 * time.Second // Timeout for TCP "ping" attempts
+	portScanTimeout = 500 * time.Millisecond
 	maxConcurrency  = 100 // Max concurrent goroutines for scanning IPs
 )
 
@@ -46,75 +48,60 @@ func InitScanner(ctx context.Context) {
 	appCtx = ctx
 }
 
-// isHostAlive sends an ICMP echo request to the target IP.
-// May require administrator/root privileges.
+// isHostAlive attempts a TCP connection to common ports to check for liveness.
+// This does not require administrator/root privileges.
+// RTT will be the time taken for the first successful or refused connection.
 func isHostAlive(targetIP string, RTT *time.Duration) bool {
 	*RTT = -1 // Default to invalid RTT
 
-	conn, err := icmp.ListenPacket("ip4:icmp", "0.0.0.0")
-	if err != nil {
-		// runtime.EventsEmit(appCtx, "scanDebug", fmt.Sprintf("ICMP ListenPacket error for %s (permissions?): %v", targetIP, err))
-		// Fallback: Try a TCP ping to a common port as an alternative
-		// For now, if ICMP fails to listen, we assume we can't ping.
-		return false
-	}
-	defer conn.Close()
+	// Ports to try for a "TCP ping".
+	// Common ports that are likely to elicit a quick response (open or RST).
+	probePorts := []int{80, 443, 22, 8080} // Common ports
 
-	dstAddr, err := net.ResolveIPAddr("ip4", targetIP)
-	if err != nil {
-		// runtime.EventsEmit(appCtx, "scanDebug", fmt.Sprintf("ResolveIPAddr error for %s: %v", targetIP, err))
-		return false
-	}
+	for _, port := range probePorts {
+		address := fmt.Sprintf("%s:%d", targetIP, port)
+		startTime := time.Now()
+		conn, err := net.DialTimeout("tcp", address, tcpPingTimeout)
+		duration := time.Since(startTime)
 
-	// Using a unique ID and sequence number for each ping attempt might be better in complex scenarios
-	// but for simplicity, a fixed ID/Seq is used here.
-	msg := icmp.Message{
-		Type: ipv4.ICMPTypeEcho, Code: 0,
-		Body: &icmp.Echo{
-			ID:   int(time.Now().UnixNano() & 0xffff), // Pseudo-random ID
-			Seq:  1,                                  // Sequence number
-			Data: []byte("netview-ping"),
-		},
-	}
-	msgBytes, err := msg.Marshal(nil)
-	if err != nil {
-		// runtime.EventsEmit(appCtx, "scanDebug", fmt.Sprintf("ICMP Marshal error for %s: %v", targetIP, err))
-		return false
-	}
+		if err == nil {
+			// Connection successful, host is alive.
+			conn.Close()
+			*RTT = duration
+			// runtime.EventsEmit(appCtx, "scanDebug", fmt.Sprintf("TCP Ping: Host %s is alive (port %d open, RTT: %s)", targetIP, port, duration))
+			return true
+		}
 
-	startTime := time.Now()
-	if _, err := conn.WriteTo(msgBytes, dstAddr); err != nil {
-		// runtime.EventsEmit(appCtx, "scanDebug", fmt.Sprintf("ICMP WriteTo error for %s: %v", targetIP, err))
-		return false
-	}
+		// If it's a timeout, host is likely down or unresponsive on this port.
+		// We continue to the next probe port.
+		if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+			// runtime.EventsEmit(appCtx, "scanDebug", fmt.Sprintf("TCP Ping: Host %s timeout on port %d", targetIP, port))
+			continue
+		}
 
-	reply := make([]byte, 1500)
-	err = conn.SetReadDeadline(time.Now().Add(pingTimeout))
-	if err != nil {
-		// runtime.EventsEmit(appCtx, "scanDebug", fmt.Sprintf("ICMP SetReadDeadline error for %s: %v", targetIP, err))
-		return false
-	}
+		// Check if the error is syscall.ECONNREFUSED (connection refused).
+		// This indicates the host is up but the port is closed.
+		if errors.Is(err, syscall.ECONNREFUSED) {
+			*RTT = duration
+			// runtime.EventsEmit(appCtx, "scanDebug", fmt.Sprintf("TCP Ping: Host %s is alive (port %d refused - ECONNREFUSED, RTT: %s)", targetIP, port, duration))
+			return true
+		}
 
-	n, _, err := conn.ReadFrom(reply)
-	if err != nil { // This includes timeout
-		// runtime.EventsEmit(appCtx, "scanDebug", fmt.Sprintf("ICMP ReadFrom error/timeout for %s: %v", targetIP, err))
-		return false
-	}
-	*RTT = time.Since(startTime)
-
-	parsedReply, err := icmp.ParseMessage(ipv4.ICMPTypeEchoReply.Protocol(), reply[:n])
-	if err != nil {
-		// runtime.EventsEmit(appCtx, "scanDebug", fmt.Sprintf("ICMP ParseMessage error for %s: %v", targetIP, err))
-		return false
+		// Fallback for systems (like Windows) where ECONNREFUSED might not be wrapped as syscall.Errno directly,
+		// or for other errors that might still imply liveness if it's a "connection refused" type message.
+		if strings.Contains(strings.ToLower(err.Error()), "connection refused") {
+			*RTT = duration
+			// runtime.EventsEmit(appCtx, "scanDebug", fmt.Sprintf("TCP Ping: Host %s is alive (port %d refused by string match, RTT: %s)", targetIP, port, duration))
+			return true
+		}
+		
+		// runtime.EventsEmit(appCtx, "scanDebug", fmt.Sprintf("TCP Ping: Host %s other error on port %d: %v. Type: %T. Trying next port.", targetIP, port, err, err))
+		// For other errors (e.g., "no route to host", "network is unreachable"),
+		// it's safer to assume the host is not reachable via this port and try the next.
 	}
 
-	switch parsedReply.Type {
-	case ipv4.ICMPTypeEchoReply:
-		return true
-	default:
-		// runtime.EventsEmit(appCtx, "scanDebug", fmt.Sprintf("Received non-EchoReply ICMP type %v for %s", parsedReply.Type, targetIP))
-		return false
-	}
+	// runtime.EventsEmit(appCtx, "scanDebug", fmt.Sprintf("TCP Ping: Host %s appears down after trying all probe ports.", targetIP))
+	return false // Host did not respond affirmatively on any probe port.
 }
 
 // scanPort checks if a specific port is open on the target IP.
@@ -170,9 +157,9 @@ func determineDeviceTypeBasedOnData(ipAddress, hostname string, openPorts []int)
 			strings.Contains(lowerHostname, "debian") || containsAny(openPorts, []int{5000,5001,8080,8000,3000}) { // Common web/app/NAS ports
 			return "linux_server"
 		}
-		return "linux_pc" 
+		return "linux_pc"
 	}
-    
+
     // Mobile devices (harder to detect without OS fingerprinting or specific app ports)
     // Basic check if common mobile related services are open (less reliable)
     // Or if hostname indicates. Often mobiles are DHCP and don't have many open ports.
@@ -184,7 +171,7 @@ func determineDeviceTypeBasedOnData(ipAddress, hostname string, openPorts []int)
 	if containsAny(openPorts, []int{80, 443, 8000, 8080}) {
 		return "generic_device" // Could be a web server, IoT device, etc.
 	}
-    
+
 	return "generic_device" // Fallback for any other alive device
 }
 
@@ -297,7 +284,7 @@ func PerformScan(scanParams *ScanRange) error {
 				for p := range openPortsChan {
 					openPorts = append(openPorts, p)
 				}
-				
+
 				// Even if no specified ports are open, we found an alive host.
 				// The frontend can decide how to display hosts with no matching open ports.
 				hostname := resolveHostname(ipToScan)
@@ -320,5 +307,3 @@ func PerformScan(scanParams *ScanRange) error {
 
 	return nil
 }
-
-    
