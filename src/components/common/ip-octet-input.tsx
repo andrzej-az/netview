@@ -13,6 +13,7 @@ interface IpOctetInputProps {
   value: string; // Full IP string e.g., "192.168.1.1"
   onChange: (ip: string) => void;
   disabled?: boolean;
+  onEnterPress?: () => void; // New prop
 }
 
 export const IpOctetInput: React.FC<IpOctetInputProps> = ({
@@ -21,6 +22,7 @@ export const IpOctetInput: React.FC<IpOctetInputProps> = ({
   value,
   onChange,
   disabled,
+  onEnterPress,
 }) => {
   const [octets, setOctets] = useState<[string, string, string, string]>(['', '', '', '']);
   const inputRefs = [
@@ -44,7 +46,7 @@ export const IpOctetInput: React.FC<IpOctetInputProps> = ({
          setOctets(['', '', '', '']);
       }
     }
-  }, [value]);
+  }, [value, octets]);
 
   const handleChange = (index: number, inputValue: string) => {
     let newOctetValue = inputValue;
@@ -88,6 +90,11 @@ export const IpOctetInput: React.FC<IpOctetInputProps> = ({
   };
 
   const handleKeyDown = (index: number, e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      onEnterPress?.();
+      return;
+    }
     if (e.key === '.') {
       e.preventDefault();
       if (index < 3 && inputRefs[index + 1]?.current) {

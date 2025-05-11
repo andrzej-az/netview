@@ -2,6 +2,7 @@
 'use client';
 
 import type { FC } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -14,6 +15,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { IpRangeInput } from '@/components/network/ip-range-input';
 import { ScanLine } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 interface CustomRangeDialogProps {
   isOpen: boolean;
@@ -22,7 +24,7 @@ interface CustomRangeDialogProps {
   onStartIpChange: (ip: string) => void;
   endIp: string;
   onEndIpChange: (ip: string) => void;
-  onScanRange: () => void;
+  onScanRange: () => boolean; // Modified to return boolean for validation status
   isScanning: boolean;
 }
 
@@ -36,13 +38,26 @@ export const CustomRangeDialog: FC<CustomRangeDialogProps> = ({
   onScanRange,
   isScanning,
 }) => {
+  const [isShaking, setIsShaking] = useState(false);
+
   const handleScanClick = () => {
-    onScanRange(); // Parent handles validation, scan logic, and closing the dialog
+    const validationPassed = onScanRange(); // Parent handles validation, scan logic
+    if (!validationPassed) {
+      setIsShaking(true);
+    }
+    // If validationPassed is true, parent (HomePage) will close the dialog via onOpenChange
   };
+
+  useEffect(() => {
+    if (isShaking) {
+      const timer = setTimeout(() => setIsShaking(false), 500); // Duration of shake animation
+      return () => clearTimeout(timer);
+    }
+  }, [isShaking]);
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className={cn("sm:max-w-md", isShaking && 'animate-shake')}>
         <DialogHeader>
           <DialogTitle>Scan Custom IP Range</DialogTitle>
           <DialogDescription>
@@ -57,6 +72,7 @@ export const CustomRangeDialog: FC<CustomRangeDialogProps> = ({
             onEndIpChange={onEndIpChange}
             disabled={isScanning}
             showTitle={false} // Hide IpRangeInput's own title as dialog provides it
+            onEnterPress={handleScanClick} // Trigger scan on Enter press
           />
         </div>
         <DialogFooter>

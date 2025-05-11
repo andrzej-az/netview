@@ -12,7 +12,8 @@ interface IpRangeInputProps {
   endIp: string;
   onEndIpChange: (ip: string) => void;
   disabled?: boolean;
-  showTitle?: boolean; // New prop
+  showTitle?: boolean; 
+  onEnterPress?: () => void; // New prop
 }
 
 export const IpRangeInput: FC<IpRangeInputProps> = ({
@@ -21,7 +22,8 @@ export const IpRangeInput: FC<IpRangeInputProps> = ({
   endIp,
   onEndIpChange,
   disabled,
-  showTitle = true, // Default to true
+  showTitle = true,
+  onEnterPress,
 }) => {
   return (
     <Card>
@@ -40,6 +42,7 @@ export const IpRangeInput: FC<IpRangeInputProps> = ({
           value={startIp}
           onChange={onStartIpChange}
           disabled={disabled}
+          onEnterPress={onEnterPress}
         />
         <IpOctetInput
           label="End IP Address"
@@ -47,6 +50,7 @@ export const IpRangeInput: FC<IpRangeInputProps> = ({
           value={endIp}
           onChange={onEndIpChange}
           disabled={disabled}
+          onEnterPress={onEnterPress}
         />
       </CardContent>
     </Card>

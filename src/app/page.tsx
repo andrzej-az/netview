@@ -54,8 +54,6 @@ export default function HomePage() {
 
     // If the first octet of startIP is empty, don't attempt to suggest EndIP changes based on it.
     if (startOctets[0].trim() === '') {
-        // Optionally, if Start IP becomes completely empty, one might choose to clear End IP or leave it.
-        // For now, we only act if Start IP has content.
         return;
     }
     
@@ -64,15 +62,11 @@ export default function HomePage() {
     while (currentEndOctetsRaw.length < 4) currentEndOctetsRaw.push('');
     currentEndOctetsRaw.length = 4;
 
-    let newEndOctets = [...currentEndOctetsRaw]; // Create a mutable copy from current end IP state
+    let newEndOctets = [...currentEndOctetsRaw]; 
     let ipChanged = false;
 
-    // Sync A, B, C octets of EndIP with StartIP
     for (let i = 0; i < 3; i++) {
-        // Update EndIP's octet if StartIP's octet is validly formed (can be empty string for deletion effect)
-        // and is different from EndIP's current corresponding octet.
         if (startOctets[i] !== newEndOctets[i]) {
-          // Allow empty start octet to clear corresponding end octet
           if (startOctets[i] === '' || isValidOctet(startOctets[i])) {
             newEndOctets[i] = startOctets[i];
             ipChanged = true;
@@ -80,24 +74,13 @@ export default function HomePage() {
         }
     }
 
-    // D octet logic for EndIP:
-    // If StartIP's A, B, C octets are all validly filled:
     if (isValidOctet(startOctets[0]) && isValidOctet(startOctets[1]) && isValidOctet(startOctets[2])) {
-        // And if the D octet of the *original* customEndIp was empty or '255' (indicating it was default or ready for suggestion)
         if (currentEndOctetsRaw[3] === '' || currentEndOctetsRaw[3] === '255') {
-            // Then, set the D octet of newEndOctets to '255', if it's not already.
             if (newEndOctets[3] !== '255') {
                 newEndOctets[3] = '255';
                 ipChanged = true;
             }
         }
-        // If currentEndOctetsRaw[3] was something specific (e.g., "50"), newEndOctets[3] would have inherited that value,
-        // and this block wouldn't change it, thus preserving user's specific End D octet.
-    } else {
-        // If Start IP's A.B.C prefix is not fully valid, don't force End D to 255.
-        // If End D was '255' and Start A.B.C becomes incomplete, End D might get cleared if an earlier Start octet was cleared.
-        // e.g. if startC clears, newEndC clears, and newEndD stays as it was (could be '255' or user value).
-        // This behavior is generally fine as user is editing.
     }
 
     if (ipChanged) {
@@ -106,7 +89,7 @@ export default function HomePage() {
             setCustomEndIp(finalNewEndIp);
         }
     }
-  }, [customStartIp]); // Only react to changes in customStartIp
+  }, [customStartIp, customEndIp]);
 
 
   const fetchHosts = useCallback(async (rangeInput: { startIp: string; endIp: string }) => {
@@ -118,20 +101,12 @@ export default function HomePage() {
         });
         return;
     }
-    if (!rangeInput || !rangeInput.startIp || !rangeInput.endIp) {
-        toast({
-            title: "Invalid Range",
-            description: "A valid IP range must be provided to scan.",
-            variant: "destructive",
-        });
-        return;
-    }
-
+    // Validation for rangeInput content is done in handleScanFromDialog before calling fetchHosts
 
     setIsScanning(true);
     setHosts([]); 
     setError(null);
-    setScannedRangeTitle(rangeInput); // Set the title for the currently scanned range
+    setScannedRangeTitle(rangeInput); 
     
     const scanParameters: WailsScanParameters = { 
         startIp: rangeInput.startIp, 
@@ -185,13 +160,10 @@ export default function HomePage() {
     if (typeof window.runtime?.EventsOn === 'function') {
       unlistenHostFound = window.runtime.EventsOn('hostFound', (host: Host) => {
         setHosts(prevHosts => {
-          // Check if host already exists to prevent duplicates if events are re-emitted or similar
           if (prevHosts.find(h => h.ipAddress === host.ipAddress)) {
-             // Optionally, update existing host data if needed, though for this app, it's mostly new discoveries
             return prevHosts.map(h => h.ipAddress === host.ipAddress ? host : h);
           }
           return [...prevHosts, host].sort((a, b) => {
-            // Basic IP sorting: convert to numbers for comparison
             const ipToNum = (ip: string) => ip.split('.').reduce((acc, octet, i) => acc + parseInt(octet) * Math.pow(256, 3 - i), 0);
             return ipToNum(a.ipAddress) - ipToNum(b.ipAddress);
           });
@@ -214,7 +186,7 @@ export default function HomePage() {
             description: errorMessage,
             variant: "destructive",
         });
-        setIsScanning(false); // Ensure scanning stops on error
+        setIsScanning(false); 
       });
     }
 
@@ -230,23 +202,40 @@ export default function HomePage() {
     setIsDrawerOpen(true);
   };
 
-  const handleScanFromDialog = () => {
+  const handleScanFromDialog = (): boolean => {
     if (!isValidIp(customStartIp)) {
       toast({ title: "Invalid Input", description: "Start IP address is not valid.", variant: "destructive" });
-      return;
+      return false; // Validation failed
     }
     if (!isValidIp(customEndIp)) {
       toast({ title: "Invalid Input", description: "End IP address is not valid.", variant: "destructive" });
-      return;
+      return false; // Validation failed
     }
+    // Add logic for startIP <= endIP if necessary
+    // For example:
+    // const start = ipToNumber(customStartIp);
+    // const end = ipToNumber(customEndIp);
+    // if (start > end) {
+    //   toast({ title: "Invalid Range", description: "Start IP cannot be greater than End IP.", variant: "destructive" });
+    //   return false;
+    // }
+
     fetchHosts({ startIp: customStartIp, endIp: customEndIp });
-    setIsCustomRangeDialogOpen(false);
+    setIsCustomRangeDialogOpen(false); // Close dialog on successful validation and scan initiation
+    return true; // Validation passed
   };
 
   const handleRescanFromHistory = (startIp: string, endIp: string) => {
     setCustomStartIp(startIp);
     setCustomEndIp(endIp);
-    fetchHosts({ startIp, endIp });
+    // Directly call fetchHosts or go through validation again if needed
+    // For consistency, could call a wrapper that validates then fetches.
+    // For now, assuming history items are valid.
+    if (isValidIp(startIp) && isValidIp(endIp)) {
+        fetchHosts({ startIp, endIp });
+    } else {
+        toast({ title: "Invalid History Item", description: "The selected history item has an invalid IP range.", variant: "destructive" });
+    }
   };
 
 
@@ -321,21 +310,14 @@ export default function HomePage() {
                 onClick={() => setIsHistoryDrawerOpen(true)}
                 variant="outline"
                 className="w-full sm:w-auto"
-                disabled={!settingsLoaded} // Keep disabled based on settingsLoaded
+                disabled={!settingsLoaded} 
               >
                 <HistoryIcon className="mr-2 h-4 w-4" />
                 Scan History
               </Button>
             </div>
           </div>
-          {/* The sticky container's top value should account for the custom title bar (h-8 = 2rem) 
-              AND the main app header below it if that header is also fixed/sticky.
-              Assuming the main <Header/> is not sticky, top-8 (for title bar) is fine.
-              If <Header/> from layout becomes sticky, this top value needs to be adjusted further.
-              Current <Header/> is part of the scrollable content flow so top-[calc(2rem)] (for title bar) is enough.
-              The `pt-8` on `RootLayout`'s main div already pushes content down.
-              So, `top-0` for this sticky bar means it sticks to the top of the scrollable main content area.
-          */}
+
           <div className="sticky top-0 z-10 bg-background py-4 mb-6 shadow-sm">
             <div className="flex flex-col md:flex-row justify-between items-center gap-4">
               <div className="relative w-full md:flex-grow">
@@ -491,4 +473,3 @@ export default function HomePage() {
     </>
   );
 }
-
