@@ -79,11 +79,12 @@ export function CustomTitlebar() {
   
   if (!isClient) {
     // Placeholder to maintain layout space during SSR or before client-side check
-    return <div className="h-8 bg-background fixed top-0 left-0 right-0 z-[60] print:hidden" />;
+    // Ensure z-index matches the actual component for consistency.
+    return <div className="h-8 bg-background fixed top-0 left-0 right-0 z-[101] print:hidden" />;
   }
 
   return (
-    <div className="h-8 bg-background text-foreground flex items-center justify-between border-b fixed top-0 left-0 right-0 z-[60] print:hidden">
+    <div className="h-8 bg-background text-foreground flex items-center justify-between border-b fixed top-0 left-0 right-0 z-[101] print:hidden">
       {/* Draggable Area and Title */}
       <div data-wails-drag className="flex-grow h-full flex items-center px-3 select-none">
         <AppIcon className="h-4 w-4 mr-2 text-primary" />
@@ -92,7 +93,7 @@ export function CustomTitlebar() {
 
       {/* Window Controls: Render only if in Wails environment */}
       {isWailsEnv && (
-        <div className="flex items-center">
+        <div className="flex items-center"> {/* This container's z-index is relative to its parent */}
           <Button
             variant="ghost"
             size="icon"
