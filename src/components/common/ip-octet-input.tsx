@@ -149,7 +149,8 @@ export const IpOctetInput: React.FC<IpOctetInputProps> = ({
             className={cn(
               "max-w-[4rem] flex-shrink grow basis-0 text-center tabular-nums", // Removed w-10, sm:w-auto. Added max-w-[4rem]
               "border-none bg-transparent p-0 shadow-none", // Remove individual input styling
-              "focus:outline-none focus:ring-0" // Remove individual focus rings
+              // Explicitly remove both focus and focus-visible rings from individual inputs
+              "focus:outline-none focus:ring-0 focus-visible:ring-0 focus-visible:ring-offset-0"
             )}
             placeholder="0"
             aria-label={`Octet ${idx + 1}`}
