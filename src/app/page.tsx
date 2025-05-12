@@ -74,6 +74,7 @@ export default function HomePage() {
         }
     }
 
+    // Autocomplete D octet to 255 only if A, B, C are valid and D is currently empty or already 255
     if (isValidOctet(startOctets[0]) && isValidOctet(startOctets[1]) && isValidOctet(startOctets[2])) {
         if (currentEndOctetsRaw[3] === '' || currentEndOctetsRaw[3] === '255') {
             if (newEndOctets[3] !== '255') {
@@ -228,8 +229,8 @@ export default function HomePage() {
       });
 
       unlistenHostStatusUpdate = window.runtime.EventsOn('hostStatusUpdate', (update: HostStatusUpdate) => {
+        let hostForToast: Host | undefined;
         setHosts(prevHosts => {
-          let hostForToast: Host | undefined;
           const updatedHosts = prevHosts.map(h => {
             if (h.ipAddress === update.ipAddress) {
                // Found the host, create the updated version
@@ -238,23 +239,21 @@ export default function HomePage() {
             }
             return h; // Return unchanged host
           });
+            // Move toast outside the map function, trigger after state updates
+          return updatedHosts; // Return the new state array
+        });
 
-          // Check if we actually found and updated a host
-          if (hostForToast) {
-              const displayIdentifier = hostForToast.hostname || hostForToast.ipAddress;
-              // Trigger toast notification from within the state updater
-              toast({
+        // Trigger toast after state update completes, using the captured hostForToast
+        if (hostForToast) {
+            const displayIdentifier = hostForToast.hostname || hostForToast.ipAddress;
+            toast({
                 title: `Host ${update.isOnline ? 'Online' : 'Offline'}`,
                 description: `${displayIdentifier} (${hostForToast.ipAddress}) is now ${update.isOnline ? 'reachable' : 'unreachable'}.`,
                 variant: update.isOnline ? 'default' : 'destructive',
-              });
-          } else {
-              // Host wasn't in the list, maybe log this? Or do nothing.
-              console.warn(`Received status update for unmonitored IP: ${update.ipAddress}`);
-          }
-
-          return updatedHosts; // Return the new state array
-        });
+            });
+        } else {
+            console.warn(`Received status update for IP not in current list: ${update.ipAddress}`);
+        }
       });
 
     }
@@ -272,7 +271,7 @@ export default function HomePage() {
     setIsDrawerOpen(true);
   };
 
-  const handleScan = (): boolean => {
+  const handleScan = useCallback((): boolean => {
     let sIp = startIp;
     let eIp = endIp;
 
@@ -294,10 +293,17 @@ export default function HomePage() {
 
     if (!isValidIp(finalStartIp)) {
       toast({ title: "Invalid Input", description: "Start IP address is not valid. Empty octets were treated as '0'.", variant: "destructive" });
+      // Optionally shake the input container
+      const ipRangeContainer = document.getElementById('ip-range-container');
+      ipRangeContainer?.classList.add('animate-shake');
+      setTimeout(() => ipRangeContainer?.classList.remove('animate-shake'), 500);
       return false;
     }
     if (!isValidIp(finalEndIp)) {
       toast({ title: "Invalid Input", description: "End IP address is not valid. Empty octets were treated as '0' (or '255' for the last octet).", variant: "destructive" });
+      const ipRangeContainer = document.getElementById('ip-range-container');
+      ipRangeContainer?.classList.add('animate-shake');
+      setTimeout(() => ipRangeContainer?.classList.remove('animate-shake'), 500);
       return false;
     }
 
@@ -306,13 +312,16 @@ export default function HomePage() {
 
     if (startNum === null || endNum === null || startNum > endNum) {
       toast({ title: "Invalid Range", description: "Start IP cannot be greater than End IP after processing.", variant: "destructive" });
+       const ipRangeContainer = document.getElementById('ip-range-container');
+      ipRangeContainer?.classList.add('animate-shake');
+      setTimeout(() => ipRangeContainer?.classList.remove('animate-shake'), 500);
       return false;
     }
 
     fetchHosts({ startIp: finalStartIp, endIp: finalEndIp });
     // setIsCustomRangeDialogOpen(false); // Removed
     return true;
-  };
+  }, [startIp, endIp, fetchHosts, toast]);
 
   const handleRescanFromHistory = (histStartIp: string, histEndIp: string) => {
     setStartIp(histStartIp);
@@ -443,23 +452,26 @@ export default function HomePage() {
         {/* IP Range Input and Scan Button */}
         <Card>
           <CardContent className="pt-6">
-            <div className="flex flex-col md:flex-row items-center gap-4 md:gap-6">
-              <div className="flex-grow w-full">
+            {/* Add id for shake animation targeting */}
+            <div id="ip-range-container" className="flex flex-col lg:flex-row lg:items-end gap-4 lg:gap-6">
+              {/* IpRangeInput now handles its internal layout */}
+              <div className="flex-grow">
                 <IpRangeInput
                   startIp={startIp}
                   onStartIpChange={setStartIp}
                   endIp={endIp}
                   onEndIpChange={setEndIp}
                   disabled={isScanning || !settingsLoaded}
-                  showTitle={false} // Hide internal title
                   onEnterPress={handleScan}
                 />
               </div>
-              <div className="flex flex-row gap-2 w-full md:w-auto">
+              {/* Buttons aligned next to inputs on larger screens */}
+              <div className="flex flex-row gap-2 w-full lg:w-auto flex-shrink-0 mt-4 lg:mt-0">
                 <Button
                   onClick={handleScan}
                   disabled={isScanning || !settingsLoaded}
                   className="flex-grow md:flex-grow-0"
+                  title="Scan the specified IP range"
                 >
                   <ScanSearch className={`mr-2 h-4 w-4 ${isScanning ? 'animate-pulse' : ''}`} />
                   {isScanning ? 'Scanning...' : 'Scan'}
@@ -470,7 +482,7 @@ export default function HomePage() {
                   className="flex-grow md:flex-grow-0"
                   disabled={!settingsLoaded}
                   aria-label="Scan History"
-                  title="Scan History"
+                  title="View Scan History"
                 >
                   <HistoryIcon className="h-4 w-4" />
                 </Button>
@@ -498,21 +510,12 @@ export default function HomePage() {
               }
             </h2>
             <div className="flex flex-col sm:flex-row flex-wrap gap-2 w-full sm:w-auto justify-end">
-              {/* Removed Scan Specific Range Button */}
-              {/* <Button
-                onClick={() => setIsHistoryDrawerOpen(true)}
-                variant="outline"
-                className="w-full sm:w-auto"
-                disabled={!settingsLoaded}
-              >
-                <HistoryIcon className="mr-2 h-4 w-4" />
-                Scan History
-              </Button> */}
                <Button
                 onClick={handleToggleMonitoring}
                 disabled={isScanning || !settingsLoaded || (hosts.length === 0 && !isMonitoring)}
                 variant={isMonitoring ? "secondary" : "outline"}
                 className="w-full sm:w-auto"
+                title={isMonitoring ? "Stop live monitoring of hosts" : "Start live monitoring of found hosts"}
               >
                 {isMonitoring ? <EyeOff className="mr-2 h-4 w-4" /> : <Activity className="mr-2 h-4 w-4" />}
                 {isMonitoring ? "Stop Monitoring" : "Start Monitoring"}
@@ -520,7 +523,8 @@ export default function HomePage() {
             </div>
           </div>
 
-          <div className="sticky top-0 z-10 bg-background py-4 mb-6 shadow-sm">
+          {/* Sticky container for filter and view controls */}
+          <div className="sticky top-0 z-10 bg-background py-4 mb-6 shadow-sm -mx-4 px-4 md:-mx-8 md:px-8">
             <div className="flex flex-col md:flex-row justify-between items-center gap-4">
               <div className="relative w-full md:flex-grow">
                 <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
@@ -531,6 +535,7 @@ export default function HomePage() {
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="pl-10 w-full"
                   disabled={(!scanInitiated && hosts.length === 0) || (isScanning && hosts.length === 0) || !settingsLoaded}
+                  aria-label="Filter scan results"
                 />
               </div>
               <div className="flex items-center gap-2 self-end md:self-center">
@@ -540,6 +545,7 @@ export default function HomePage() {
                   onClick={() => setViewMode('card')}
                   disabled={(!scanInitiated && hosts.length === 0) || (isScanning && hosts.length === 0) || !settingsLoaded}
                   aria-label="Card view"
+                  title="Display results as cards"
                 >
                   <LayoutGrid className="h-5 w-5" />
                 </Button>
@@ -549,6 +555,7 @@ export default function HomePage() {
                   onClick={() => setViewMode('list')}
                   disabled={(!scanInitiated && hosts.length === 0) || (isScanning && hosts.length === 0) || !settingsLoaded}
                   aria-label="List view"
+                  title="Display results as a list"
                 >
                   <List className="h-5 w-5" />
                 </Button>
