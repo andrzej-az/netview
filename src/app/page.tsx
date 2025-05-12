@@ -18,25 +18,26 @@ import { Loader2, ServerCrash, WifiOffIcon, ScanSearch, LayoutGrid, List, Search
 import { Skeleton } from '@/components/ui/skeleton';
 import { isValidIp, isValidOctet, ipToNumber } from '@/lib/ip-utils';
 import { useToast } from '@/hooks/use-toast';
-import { CustomRangeDialog } from '@/components/network/custom-range-dialog';
+// import { CustomRangeDialog } from '@/components/network/custom-range-dialog'; // No longer needed
+import { IpRangeInput } from '@/components/network/ip-range-input'; // Keep this
 import { ScanHistoryDrawer } from '@/components/history/scan-history-drawer';
 import { SettingsDialog } from '@/components/settings/settings-dialog';
 import { useSettings } from '@/hooks/use-settings';
 import type { WailsScanParameters, HostStatusUpdate } from '@/types/wails';
-
+import { Card, CardContent } from '@/components/ui/card'; // For wrapping IP input
 
 export default function HomePage() {
   const [hosts, setHosts] = useState<Host[]>([]);
   const [selectedHost, setSelectedHost] = useState<Host | null>(null);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
-  const [isScanning, setIsScanning] = useState(false); 
+  const [isScanning, setIsScanning] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const [customStartIp, setCustomStartIp] = useState<string>('');
-  const [customEndIp, setCustomEndIp] = useState<string>('');
-  const [isCustomRangeDialogOpen, setIsCustomRangeDialogOpen] = useState(false);
+  const [startIp, setStartIp] = useState<string>('');
+  const [endIp, setEndIp] = useState<string>('');
+  // const [isCustomRangeDialogOpen, setIsCustomRangeDialogOpen] = useState(false); // Removed
 
-  const [scannedRangeTitle, setScannedRangeTitle] = useState<{ startIp: string; endIp: string } | null>(null);
+  const [scanInitiated, setScanInitiated] = useState(false); // Track if a scan has been run
 
   const [viewMode, setViewMode] = useState<'card' | 'list'>('card');
   const [searchTerm, setSearchTerm] = useState<string>('');
@@ -49,19 +50,19 @@ export default function HomePage() {
   const { effectivePorts, isLoaded: settingsLoaded } = useSettings();
 
   useEffect(() => {
-    const startOctets = customStartIp.split('.');
+    const startOctets = startIp.split('.');
     while (startOctets.length < 4) startOctets.push('');
-    startOctets.length = 4; 
+    startOctets.length = 4;
 
     if (startOctets[0].trim() === '') {
         return;
     }
-    
-    const currentEndOctetsRaw = customEndIp.split('.');
+
+    const currentEndOctetsRaw = endIp.split('.');
     while (currentEndOctetsRaw.length < 4) currentEndOctetsRaw.push('');
     currentEndOctetsRaw.length = 4;
 
-    let newEndOctets = [...currentEndOctetsRaw]; 
+    let newEndOctets = [...currentEndOctetsRaw];
     let ipChanged = false;
 
     for (let i = 0; i < 3; i++) {
@@ -84,11 +85,11 @@ export default function HomePage() {
 
     if (ipChanged) {
         const finalNewEndIp = newEndOctets.join('.');
-        if (finalNewEndIp !== customEndIp) {
-            setCustomEndIp(finalNewEndIp);
+        if (finalNewEndIp !== endIp) {
+            setEndIp(finalNewEndIp);
         }
     }
-  }, [customStartIp, customEndIp]);
+  }, [startIp, endIp]);
 
 
   const fetchHosts = useCallback(async (rangeInput: { startIp: string; endIp: string }) => {
@@ -111,16 +112,16 @@ export default function HomePage() {
         toast({ title: "Error Pausing Monitoring", description: e.message, variant: "destructive" });
       }
     }
-    
+
     setIsScanning(true);
-    setHosts([]); 
+    setHosts([]);
     setError(null);
-    setScannedRangeTitle({ startIp: rangeInput.startIp, endIp: rangeInput.endIp }); 
-    
-    const scanParameters: WailsScanParameters = { 
-        startIp: rangeInput.startIp, 
-        endIp: rangeInput.endIp, 
-        ports: effectivePorts 
+    setScanInitiated(true); // Mark that a scan has been initiated
+
+    const scanParameters: WailsScanParameters = {
+        startIp: rangeInput.startIp,
+        endIp: rangeInput.endIp,
+        ports: effectivePorts
     };
 
     try {
@@ -130,15 +131,15 @@ export default function HomePage() {
       } else {
         console.warn("Wails Go backend not available. Using mock streaming network scanner with params:", scanParameters);
         await mockScanNetworkService(
-          scanParameters, 
-          (host: Host) => { 
+          scanParameters,
+          (host: Host) => {
             setHosts(prevHosts => {
               const newHostWithStatus = { ...host, status: 'online' as const };
               if (prevHosts.find(h => h.ipAddress === newHostWithStatus.ipAddress)) return prevHosts;
               return [...prevHosts, newHostWithStatus];
             });
           },
-          () => { 
+          () => {
             setIsScanning(false);
           }
         );
@@ -223,7 +224,7 @@ export default function HomePage() {
             description: errorMessage,
             variant: "destructive",
         });
-        setIsScanning(false); 
+        setIsScanning(false);
       });
 
       unlistenHostStatusUpdate = window.runtime.EventsOn('hostStatusUpdate', (update: HostStatusUpdate) => {
@@ -271,9 +272,9 @@ export default function HomePage() {
     setIsDrawerOpen(true);
   };
 
-  const handleScanFromDialog = (): boolean => {
-    let sIp = customStartIp;
-    let eIp = customEndIp;
+  const handleScan = (): boolean => {
+    let sIp = startIp;
+    let eIp = endIp;
 
     const sIpPartsRaw = sIp.split('.');
     while (sIpPartsRaw.length < 4) sIpPartsRaw.push('');
@@ -293,11 +294,11 @@ export default function HomePage() {
 
     if (!isValidIp(finalStartIp)) {
       toast({ title: "Invalid Input", description: "Start IP address is not valid. Empty octets were treated as '0'.", variant: "destructive" });
-      return false; 
+      return false;
     }
     if (!isValidIp(finalEndIp)) {
       toast({ title: "Invalid Input", description: "End IP address is not valid. Empty octets were treated as '0' (or '255' for the last octet).", variant: "destructive" });
-      return false; 
+      return false;
     }
 
     const startNum = ipToNumber(finalStartIp);
@@ -309,20 +310,20 @@ export default function HomePage() {
     }
 
     fetchHosts({ startIp: finalStartIp, endIp: finalEndIp });
-    setIsCustomRangeDialogOpen(false); 
-    return true; 
+    // setIsCustomRangeDialogOpen(false); // Removed
+    return true;
   };
 
-  const handleRescanFromHistory = (startIp: string, endIp: string) => {
-    setCustomStartIp(startIp);
-    setCustomEndIp(endIp);
+  const handleRescanFromHistory = (histStartIp: string, histEndIp: string) => {
+    setStartIp(histStartIp);
+    setEndIp(histEndIp);
 
-    const sIpPartsRaw = startIp.split('.');
+    const sIpPartsRaw = histStartIp.split('.');
     while (sIpPartsRaw.length < 4) sIpPartsRaw.push('');
     const finalStartIpParts = sIpPartsRaw.slice(0, 4).map(part => (part.trim() === '' ? '0' : part.trim()));
     const finalHistStartIp = finalStartIpParts.join('.');
 
-    const eIpPartsRaw = endIp.split('.');
+    const eIpPartsRaw = histEndIp.split('.');
     while (eIpPartsRaw.length < 4) eIpPartsRaw.push('');
     const finalEndIpParts = eIpPartsRaw.slice(0, 4).map((part, index) => {
       const trimmedPart = part.trim();
@@ -344,7 +345,7 @@ export default function HomePage() {
         toast({ title: "Invalid History Range", description: "Start IP cannot be greater than End IP in history item.", variant: "destructive" });
         return;
     }
-    
+
     fetchHosts({ startIp: finalHistStartIp, endIp: finalHistEndIp });
   };
 
@@ -438,38 +439,75 @@ export default function HomePage() {
   return (
     <>
       <Header onSettingsClick={() => setIsSettingsDialogOpen(true)} />
-      <main className="flex-grow container mx-auto p-4 md:px-8 md:pt-8 space-y-8">
+      <main className="flex-grow container mx-auto p-4 md:px-8 md:pt-8 space-y-6">
+        {/* IP Range Input and Scan Button */}
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex flex-col md:flex-row items-center gap-4 md:gap-6">
+              <div className="flex-grow w-full">
+                <IpRangeInput
+                  startIp={startIp}
+                  onStartIpChange={setStartIp}
+                  endIp={endIp}
+                  onEndIpChange={setEndIp}
+                  disabled={isScanning || !settingsLoaded}
+                  showTitle={false} // Hide internal title
+                  onEnterPress={handleScan}
+                />
+              </div>
+              <div className="flex flex-row gap-2 w-full md:w-auto">
+                <Button
+                  onClick={handleScan}
+                  disabled={isScanning || !settingsLoaded}
+                  className="flex-grow md:flex-grow-0"
+                >
+                  <ScanSearch className={`mr-2 h-4 w-4 ${isScanning ? 'animate-pulse' : ''}`} />
+                  {isScanning ? 'Scanning...' : 'Scan'}
+                </Button>
+                 <Button
+                  onClick={() => setIsHistoryDrawerOpen(true)}
+                  variant="outline"
+                  className="flex-grow md:flex-grow-0"
+                  disabled={!settingsLoaded}
+                  aria-label="Scan History"
+                  title="Scan History"
+                >
+                  <HistoryIcon className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+             {!settingsLoaded && (
+                 <div className="flex items-center justify-center pt-4 text-sm text-muted-foreground">
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Loading settings... Scan disabled.
+                </div>
+              )}
+          </CardContent>
+        </Card>
+
+
+        {/* Results Section */}
         <div>
           <div className="flex flex-col sm:flex-row justify-between items-center mb-6 gap-4">
             <h2 className="text-2xl font-semibold text-foreground">
-              {scannedRangeTitle 
-                ? `Hosts in ${scannedRangeTitle.startIp} - ${scannedRangeTitle.endIp}` 
-                : 'Scan an IP Range'}
-              {(isScanning || (isMonitoring && hosts.length > 0) ) && 
+              Network Scan Results
+              {(isScanning || (isMonitoring && hosts.length > 0) ) &&
                 <span className="text-base font-normal text-muted-foreground ml-2">
                   ({isScanning ? 'Scanning...' : isMonitoring ? 'Monitoring...' : ''})
                 </span>
               }
             </h2>
             <div className="flex flex-col sm:flex-row flex-wrap gap-2 w-full sm:w-auto justify-end">
-              <Button
-                onClick={() => setIsCustomRangeDialogOpen(true)}
-                disabled={isScanning || !settingsLoaded}
-                variant="outline"
-                className="w-full sm:w-auto"
-              >
-                <ScanSearch className="mr-2 h-4 w-4" />
-                Scan Specific Range
-              </Button>
-              <Button
+              {/* Removed Scan Specific Range Button */}
+              {/* <Button
                 onClick={() => setIsHistoryDrawerOpen(true)}
                 variant="outline"
                 className="w-full sm:w-auto"
-                disabled={!settingsLoaded} 
+                disabled={!settingsLoaded}
               >
                 <HistoryIcon className="mr-2 h-4 w-4" />
                 Scan History
-              </Button>
+              </Button> */}
                <Button
                 onClick={handleToggleMonitoring}
                 disabled={isScanning || !settingsLoaded || (hosts.length === 0 && !isMonitoring)}
@@ -492,7 +530,7 @@ export default function HomePage() {
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="pl-10 w-full"
-                  disabled={(!scannedRangeTitle && hosts.length === 0) || (isScanning && hosts.length === 0) || !settingsLoaded} 
+                  disabled={(!scanInitiated && hosts.length === 0) || (isScanning && hosts.length === 0) || !settingsLoaded}
                 />
               </div>
               <div className="flex items-center gap-2 self-end md:self-center">
@@ -500,7 +538,7 @@ export default function HomePage() {
                   variant={viewMode === 'card' ? 'secondary' : 'ghost'}
                   size="icon"
                   onClick={() => setViewMode('card')}
-                  disabled={(!scannedRangeTitle && hosts.length === 0) || (isScanning && hosts.length === 0) || !settingsLoaded}
+                  disabled={(!scanInitiated && hosts.length === 0) || (isScanning && hosts.length === 0) || !settingsLoaded}
                   aria-label="Card view"
                 >
                   <LayoutGrid className="h-5 w-5" />
@@ -509,7 +547,7 @@ export default function HomePage() {
                   variant={viewMode === 'list' ? 'secondary' : 'ghost'}
                   size="icon"
                   onClick={() => setViewMode('list')}
-                  disabled={(!scannedRangeTitle && hosts.length === 0) || (isScanning && hosts.length === 0) || !settingsLoaded}
+                  disabled={(!scanInitiated && hosts.length === 0) || (isScanning && hosts.length === 0) || !settingsLoaded}
                   aria-label="List view"
                 >
                   <List className="h-5 w-5" />
@@ -518,14 +556,10 @@ export default function HomePage() {
             </div>
           </div>
 
-          {!settingsLoaded && (
-             <div className="flex items-center justify-center py-10 text-md text-accent">
-                <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                Loading settings...
-            </div>
-          )}
+          {/* Loading / Error / No Results States */}
+          {/* Removed settings loading check here as it's handled above the input */}
 
-          {settingsLoaded && isScanning && hosts.length === 0 && !error && (
+          {isScanning && hosts.length === 0 && !error && (
              viewMode === 'card' ? (
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                 {[...Array(8)].map((_, i) => <HostSkeletonCard key={i} />)}
@@ -536,8 +570,8 @@ export default function HomePage() {
               </div>
             )
           )}
-          
-          {settingsLoaded && isScanning && hosts.length > 0 && (
+
+          {isScanning && hosts.length > 0 && (
              <div className="flex items-center justify-center py-4 text-md text-accent mb-4">
                 <Loader2 className="mr-2 h-5 w-5 animate-spin" />
                 Scanning in progress... Hosts will appear below as they are found.
@@ -545,41 +579,33 @@ export default function HomePage() {
           )}
 
 
-          {settingsLoaded && error && (
+          {error && (
             <Alert variant="destructive" className="mb-6">
               <ServerCrash className="h-4 w-4" />
               <AlertTitle>Error During Scan</AlertTitle>
               <AlertDescription>{error}</AlertDescription>
             </Alert>
           )}
-          
-          {settingsLoaded && !isScanning && !error && filteredHosts.length === 0 && (
-            <div className="text-center py-10">
+
+          {!isScanning && !error && filteredHosts.length === 0 && scanInitiated && (
+             <div className="text-center py-10">
               <WifiOffIcon className="mx-auto h-16 w-16 text-muted-foreground mb-4" />
-              {scannedRangeTitle ? (
-                searchTerm ? (
+              {searchTerm ? (
                   <>
                     <p className="text-xl font-medium text-muted-foreground">No hosts match your filter.</p>
                     <p className="text-sm text-muted-foreground">
-                      For range: {scannedRangeTitle.startIp} - {scannedRangeTitle.endIp}. Try a different filter or clear it.
+                      Try a different filter or clear it.
                     </p>
                   </>
                 ) : (
                   <>
                     <p className="text-xl font-medium text-muted-foreground">No hosts found.</p>
                     <p className="text-sm text-muted-foreground">
-                      In the range: {scannedRangeTitle.startIp} - {scannedRangeTitle.endIp}.
+                     No devices responded in the scanned range.
                     </p>
                   </>
                 )
-              ) : (
-                <>
-                  <p className="text-xl font-medium text-muted-foreground">No Scan Performed Yet</p>
-                  <p className="text-sm text-muted-foreground">
-                    Click 'Scan Specific Range' to discover hosts.
-                  </p>
-                </>
-              )}
+              }
               {searchTerm && (
                 <Button variant="link" onClick={() => setSearchTerm('')} className="mt-2">
                   Clear filter
@@ -587,8 +613,19 @@ export default function HomePage() {
               )}
             </div>
           )}
-          
-          {settingsLoaded && filteredHosts.length > 0 && (
+
+           {!isScanning && !error && hosts.length === 0 && !scanInitiated && (
+             <div className="text-center py-10">
+                <ScanSearch className="mx-auto h-16 w-16 text-muted-foreground mb-4 opacity-50" />
+                <p className="text-xl font-medium text-muted-foreground">Enter an IP Range</p>
+                <p className="text-sm text-muted-foreground">
+                    Specify the start and end IP addresses above and click 'Scan'.
+                </p>
+             </div>
+           )}
+
+          {/* Display Results */}
+          {filteredHosts.length > 0 && (
             viewMode === 'card' ? (
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                 {filteredHosts.map((host) => (
@@ -611,16 +648,8 @@ export default function HomePage() {
           onOpenChange={setIsDrawerOpen}
         />
 
-        <CustomRangeDialog
-          isOpen={isCustomRangeDialogOpen}
-          onOpenChange={setIsCustomRangeDialogOpen}
-          startIp={customStartIp}
-          onStartIpChange={setCustomStartIp}
-          endIp={customEndIp}
-          onEndIpChange={setCustomEndIp}
-          onScanRange={handleScanFromDialog}
-          isScanning={isScanning}
-        />
+        {/* CustomRangeDialog Removed */}
+
         <ScanHistoryDrawer
             isOpen={isHistoryDrawerOpen}
             onOpenChange={setIsHistoryDrawerOpen}
@@ -637,4 +666,3 @@ export default function HomePage() {
     </>
   );
 }
-
