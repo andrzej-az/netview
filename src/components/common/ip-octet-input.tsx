@@ -128,7 +128,8 @@ export const IpOctetInput: React.FC<IpOctetInputProps> = ({
       ref={containerRef}
       onClick={handleContainerClick} // Focus first input on container click
       className={cn(
-        "flex h-10 w-full items-center space-x-1 rounded-md border border-input bg-background px-3 py-2 text-base ring-offset-background",
+        // Removed w-full
+        "flex h-10 items-center space-x-1 rounded-md border border-input bg-background px-3 py-2 text-base ring-offset-background",
         "focus-within:outline-none focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2", // Apply focus ring to the container
         disabled ? "cursor-not-allowed opacity-50" : "cursor-text", // Change cursor based on disabled state
         "md:text-sm" // Responsive text size
@@ -147,7 +148,7 @@ export const IpOctetInput: React.FC<IpOctetInputProps> = ({
             onChange={(e: ChangeEvent<HTMLInputElement>) => handleChange(idx, e.target.value)}
             onKeyDown={(e: KeyboardEvent<HTMLInputElement>) => handleKeyDown(idx, e)}
             className={cn(
-              "max-w-[4rem] flex-shrink grow basis-0 text-center tabular-nums", // Removed w-10, sm:w-auto. Added max-w-[4rem]
+              "max-w-[4rem] flex-shrink grow basis-0 text-center tabular-nums", // max-w limits width
               "border-none bg-transparent p-0 shadow-none", // Remove individual input styling
               // Explicitly remove both focus and focus-visible rings from individual inputs
               "focus:outline-none focus:ring-0 focus-visible:ring-0 focus-visible:ring-offset-0"
