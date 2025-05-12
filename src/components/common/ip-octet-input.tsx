@@ -147,7 +147,7 @@ export const IpOctetInput: React.FC<IpOctetInputProps> = ({
             onChange={(e: ChangeEvent<HTMLInputElement>) => handleChange(idx, e.target.value)}
             onKeyDown={(e: KeyboardEvent<HTMLInputElement>) => handleKeyDown(idx, e)}
             className={cn(
-              "w-10 flex-shrink grow basis-0 text-center tabular-nums sm:w-auto", // Adjust width using flex properties
+              "max-w-[4rem] flex-shrink grow basis-0 text-center tabular-nums", // Removed w-10, sm:w-auto. Added max-w-[4rem]
               "border-none bg-transparent p-0 shadow-none", // Remove individual input styling
               "focus:outline-none focus:ring-0" // Remove individual focus rings
             )}
