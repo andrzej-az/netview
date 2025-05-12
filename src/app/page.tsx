@@ -453,9 +453,11 @@ export default function HomePage() {
         <Card>
           <CardContent className="pt-6">
             {/* Add id for shake animation targeting */}
+            {/* Use flex-col for vertical stacking, lg:flex-row for horizontal on large screens */}
+            {/* items-start ensures alignment from top, lg:items-end aligns buttons to bottom of inputs on large screens */}
             <div id="ip-range-container" className="flex flex-col lg:flex-row lg:items-end gap-4 lg:gap-6">
               {/* IpRangeInput now handles its internal layout */}
-              <div className="flex-grow">
+              <div className="flex-grow"> {/* Allows IpRangeInput to take available space */}
                 <IpRangeInput
                   startIp={startIp}
                   onStartIpChange={setStartIp}
@@ -466,11 +468,14 @@ export default function HomePage() {
                 />
               </div>
               {/* Buttons aligned next to inputs on larger screens */}
-              <div className="flex flex-row gap-2 w-full lg:w-auto flex-shrink-0 mt-4 lg:mt-0">
+              {/* Use flex-shrink-0 to prevent buttons from shrinking */}
+              {/* mt-4 lg:mt-0 adds top margin on small screens, removed on large */}
+              {/* lg:self-end ensures buttons align to the bottom in the row layout */}
+              <div className="flex flex-row gap-2 w-full lg:w-auto flex-shrink-0 mt-4 lg:mt-0 lg:self-end">
                 <Button
                   onClick={handleScan}
                   disabled={isScanning || !settingsLoaded}
-                  className="flex-grow md:flex-grow-0"
+                  className="flex-grow md:flex-grow-0" // Grow on small screens, fixed size on medium+
                   title="Scan the specified IP range"
                 >
                   <ScanSearch className={`mr-2 h-4 w-4 ${isScanning ? 'animate-pulse' : ''}`} />
@@ -479,7 +484,7 @@ export default function HomePage() {
                  <Button
                   onClick={() => setIsHistoryDrawerOpen(true)}
                   variant="outline"
-                  className="flex-grow md:flex-grow-0"
+                  className="flex-grow md:flex-grow-0" // Grow on small screens, fixed size on medium+
                   disabled={!settingsLoaded}
                   aria-label="Scan History"
                   title="View Scan History"
