@@ -247,28 +247,29 @@ func containsAny(slice []int, elements []int) bool {
 }
 
 // PerformScan scans the network for hosts and open ports.
-func PerformScan(scanParams *ScanRange) error {
-	if appCtx == nil {
+func PerformScan(ctx context.Context, scanParams *ScanRange) error {
+	if ctx == nil {
 		return fmt.Errorf("scanner not initialized with context")
 	}
+	localAppCtx := ctx // Use the passed context for this scan operation
 
 	if scanParams == nil || scanParams.StartIP == "" || scanParams.EndIP == "" {
 		errMsg := "PerformScan requires a valid start and end IP address."
-		runtime.EventsEmit(appCtx, "scanError", errMsg)
-		runtime.EventsEmit(appCtx, "scanComplete", false) // Signal unsuccessful completion
+		runtime.EventsEmit(localAppCtx, "scanError", errMsg)
+		runtime.EventsEmit(localAppCtx, "scanComplete", false) // Signal unsuccessful completion
 		return fmt.Errorf(errMsg)
 	}
 
-	addScanToHistory(scanParams) // Add to history before starting scan
-	// runtime.EventsEmit(appCtx, "scanDebug", fmt.Sprintf("Go: Real PerformScan starting for range %s - %s", scanParams.StartIP, scanParams.EndIP))
+	addScanToHistory(localAppCtx, scanParams) // Add to history before starting scan, passing context
+	runtime.LogDebug(localAppCtx, fmt.Sprintf("PerformScan starting for range %s - %s", scanParams.StartIP, scanParams.EndIP))
 
 
 	portsToScan := defaultPortsToScan
 	if scanParams.Ports != nil && len(scanParams.Ports) > 0 {
 		portsToScan = scanParams.Ports
-		// runtime.EventsEmit(appCtx, "scanDebug", fmt.Sprintf("Go: Scanning with custom ports: %v", portsToScan))
+		runtime.LogDebug(localAppCtx, fmt.Sprintf("Scanning with custom ports: %v", portsToScan))
 	} else {
-		// runtime.EventsEmit(appCtx, "scanDebug", fmt.Sprintf("Go: Scanning with default ports: %v", portsToScan))
+		runtime.LogDebug(localAppCtx, fmt.Sprintf("Scanning with default ports: %v", portsToScan))
 	}
 
 	startIPNum, errStart := ipToUint32(scanParams.StartIP)
@@ -276,14 +277,14 @@ func PerformScan(scanParams *ScanRange) error {
 
 	if errStart != nil || errEnd != nil {
 		errMsg := fmt.Sprintf("Invalid IP range: StartIP parse error: %v, EndIP parse error: %v", errStart, errEnd)
-		runtime.EventsEmit(appCtx, "scanError", errMsg)
-		runtime.EventsEmit(appCtx, "scanComplete", false)
+		runtime.EventsEmit(localAppCtx, "scanError", errMsg)
+		runtime.EventsEmit(localAppCtx, "scanComplete", false)
 		return fmt.Errorf(errMsg)
 	}
 	if startIPNum > endIPNum {
 		errMsg := "Start IP cannot be greater than End IP."
-		runtime.EventsEmit(appCtx, "scanError", errMsg)
-		runtime.EventsEmit(appCtx, "scanComplete", false)
+		runtime.EventsEmit(localAppCtx, "scanError", errMsg)
+		runtime.EventsEmit(localAppCtx, "scanComplete", false)
 		return fmt.Errorf(errMsg)
 	}
 
@@ -291,17 +292,16 @@ func PerformScan(scanParams *ScanRange) error {
 	semaphore := make(chan struct{}, maxConcurrency)
 
 	go func() { // Main scanning goroutine
-		activeScanCtx, cancelScan := context.WithCancel(appCtx) // Allow scan cancellation if needed
-		defer cancelScan()                                      // Ensure cancellation resources are cleaned up
+		// Use the context passed into PerformScan for cancellation checks
 		defer func() {
-			// runtime.EventsEmit(activeScanCtx, "scanDebug", "Go: Real scan goroutine finished. Emitting scanComplete.")
-			runtime.EventsEmit(activeScanCtx, "scanComplete", true) // True indicates the scan process itself completed
+			runtime.LogDebug(localAppCtx, "Scan goroutine finished. Emitting scanComplete.")
+			runtime.EventsEmit(localAppCtx, "scanComplete", true) // True indicates the scan process itself completed
 		}()
 
 		for i := uint32(0); i <= (endIPNum - startIPNum); i++ {
 			select {
-			case <-activeScanCtx.Done(): // Check for cancellation (e.g., app closing)
-				// runtime.EventsEmit(appCtx, "scanDebug", "Go: Scan cancelled.")
+			case <-localAppCtx.Done(): // Check for cancellation (e.g., app closing)
+				runtime.LogDebug(localAppCtx, "Scan cancelled via context.")
 				return
 			default:
 				// Continue scanning
@@ -321,7 +321,7 @@ func PerformScan(scanParams *ScanRange) error {
 				if !isHostAlive(ipToScan, &rtt) {
 					return // Host is not alive or did not respond to ping
 				}
-				// runtime.EventsEmit(activeScanCtx, "scanDebug", fmt.Sprintf("Go: Host %s is alive (RTT: %s). Scanning ports...", ipToScan, rtt.String()))
+				// runtime.EventsEmit(localAppCtx, "scanDebug", fmt.Sprintf("Go: Host %s is alive (RTT: %s). Scanning ports...", ipToScan, rtt.String()))
 
 				var openPorts []int
 				// Scan ports concurrently for an alive host
@@ -359,8 +359,8 @@ func PerformScan(scanParams *ScanRange) error {
 					DeviceType: deviceType,
 					OS:         "", // OS detection is complex and not implemented
 				}
-				// runtime.EventsEmit(activeScanCtx, "scanDebug", fmt.Sprintf("Go: Emitting hostFound: %+v", host))
-				runtime.EventsEmit(activeScanCtx, "hostFound", host)
+				// runtime.EventsEmit(localAppCtx, "scanDebug", fmt.Sprintf("Go: Emitting hostFound: %+v", host))
+				runtime.EventsEmit(localAppCtx, "hostFound", host) // Use the scan's context
 
 			}(ipStr)
 		}
@@ -369,6 +369,5 @@ func PerformScan(scanParams *ScanRange) error {
 
 	return nil
 }
-
 
     

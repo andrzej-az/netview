@@ -11,7 +11,7 @@ import (
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
-	// "github.com/wailsapp/wails/v2/pkg/runtime" // No longer directly used here
+	"github.com/wailsapp/wails/v2/pkg/runtime" // Needed for logging in init funcs
 )
 
 //go:embed all:out
@@ -33,6 +33,9 @@ func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 	// Initialize the scanner with the context
 	InitScanner(ctx)
+	// Initialize and load scan history
+	initHistory(ctx) // Pass context for logging
+	runtime.LogInfo(ctx, "Application startup complete.")
 }
 
 
@@ -41,7 +44,7 @@ func (a *App) startup(ctx context.Context) {
 func (a *App) ScanNetwork(scanRange *ScanRange) error {
 	// If scanRange is nil (e.g., from a frontend call with `null`), PerformScan should handle it.
 	// Or, if scanRange is an empty struct (e.g., `{}` from frontend), specific fields like Ports might be set.
-	return PerformScan(scanRange)
+	return PerformScan(a.ctx, scanRange) // Pass context to PerformScan
 }
 
 // GetScanHistory is defined in history.go as a method of *App.
@@ -65,6 +68,8 @@ func main() {
 		Bind: []interface{}{
 			app, // Binding the app instance makes all its methods (like ScanNetwork, GetScanHistory) available to the frontend.
 		},
+		// Enable debug logging for Wails runtime
+		// LogLevel: logger.DEBUG, 
 	})
 
 	if err != nil {
@@ -72,3 +77,5 @@ func main() {
 	}
 }
 
+
+    
