@@ -1,6 +1,6 @@
 
 import { Network, SettingsIcon } from 'lucide-react';
-import { ThemeToggleButton } from '@/components/theme/theme-toggle-button';
+// Removed: import { ThemeToggleButton } from '@/components/theme/theme-toggle-button';
 import type { ButtonProps } from '@/components/ui/button'; // Import ButtonProps
 import { Button } from '@/components/ui/button'; // Import Button
 
@@ -25,8 +25,8 @@ export function Header({ onSettingsClick }: HeaderProps) {
               <SettingsIcon className="h-5 w-5" />
             </Button>
           )}
-          {/* Theme toggle button icons should also adapt or inherit white color */}
-          <ThemeToggleButton />
+          {/* Removed ThemeToggleButton */}
+          {/* <ThemeToggleButton /> */}
         </div>
       </div>
     </header>
