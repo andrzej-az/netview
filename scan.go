@@ -1,4 +1,3 @@
-
 package main
 
 import (
@@ -9,7 +8,7 @@ import (
 	"net"
 	"os/exec"
 	"regexp"
-	"runtime" // To get OS for arp command
+	runtime_go "runtime" // To get OS for arp command
 	"strings"
 	"sync"
 	"syscall" // For syscall.ECONNREFUSED
@@ -44,7 +43,7 @@ var defaultPortsToScan = []int{22, 80, 443, 8080, 445} // Default ports if not s
 const (
 	tcpPingTimeout  = 1 * time.Second // Timeout for TCP "ping" attempts
 	portScanTimeout = 500 * time.Millisecond
-	maxConcurrency  = 100 // Max concurrent goroutines for scanning IPs
+	maxConcurrency  = 100             // Max concurrent goroutines for scanning IPs
 	arpTimeout      = 2 * time.Second // Timeout for ARP command execution
 )
 
@@ -137,7 +136,7 @@ func getMacAddress(ipAddress string) string {
 	ctx, cancel := context.WithTimeout(context.Background(), arpTimeout)
 	defer cancel()
 
-	switch runtime.GOOS {
+	switch runtime_go.GOOS {
 	case "linux", "darwin": // macOS uses similar arp command to Linux
 		// Using -n to prevent DNS resolution, which can be slow.
 		cmd = exec.CommandContext(ctx, "arp", "-n", ipAddress)
@@ -182,7 +181,6 @@ func getMacAddress(ipAddress string) string {
 	return "" // MAC address not found
 }
 
-
 // determineDeviceTypeBasedOnData provides a heuristic for device type.
 func determineDeviceTypeBasedOnData(ipAddress, hostname string, openPorts []int) string {
 	lowerHostname := strings.ToLower(hostname)
@@ -202,29 +200,32 @@ func determineDeviceTypeBasedOnData(ipAddress, hostname string, openPorts []int)
 	if containsAny(openPorts, []int{135, 137, 138, 139, 445, 3389}) { // RPC, NetBIOS, SMB, RDP
 		return "windows_pc"
 	}
-    // macOS (often has SSH, AFP/SMB might be open)
-    if strings.Contains(lowerHostname, "macbook") || strings.Contains(lowerHostname, "imac") || strings.Contains(lowerHostname, "apple") || (containsAny(openPorts, []int{22, 548, 445}) && !strings.Contains(lowerHostname, "linux"))  {
-         // Checking for common Mac services or hostname patterns
-        return "macos_pc"
-    }
+	// macOS (often has SSH, AFP/SMB might be open)
+	if strings.Contains(lowerHostname, "macbook") || strings.Contains(lowerHostname, "imac") || strings.Contains(lowerHostname, "apple") || (containsAny(openPorts, []int{22, 548, 445}) && !strings.Contains(lowerHostname, "linux")) {
+		// Checking for common Mac services or hostname patterns
+		return "macos_pc"
+	}
 
 	// Linux Servers / PCs
 	hasSSH := containsAny(openPorts, []int{22})
 	if hasSSH {
 		if strings.Contains(lowerHostname, "server") || strings.Contains(lowerHostname, "nas") ||
 			strings.Contains(lowerHostname, "ubuntu-server") || strings.Contains(lowerHostname, "centos") ||
-			strings.Contains(lowerHostname, "debian") || containsAny(openPorts, []int{5000,5001,8080,8000,3000}) { // Common web/app/NAS ports
+			strings.Contains(lowerHostname, "debian") || containsAny(openPorts, []int{5000, 5001, 8080, 8000, 3000}) { // Common web/app/NAS ports
 			return "linux_server"
 		}
 		return "linux_pc"
 	}
 
-    // Mobile devices (harder to detect without OS fingerprinting or specific app ports)
-    // Basic check if common mobile related services are open (less reliable)
-    // Or if hostname indicates. Often mobiles are DHCP and don't have many open ports.
-    if strings.Contains(lowerHostname, "android") { return "android_mobile" }
-    if strings.Contains(lowerHostname, "iphone") || strings.Contains(lowerHostname, "ipad") { return "ios_mobile" }
-
+	// Mobile devices (harder to detect without OS fingerprinting or specific app ports)
+	// Basic check if common mobile related services are open (less reliable)
+	// Or if hostname indicates. Often mobiles are DHCP and don't have many open ports.
+	if strings.Contains(lowerHostname, "android") {
+		return "android_mobile"
+	}
+	if strings.Contains(lowerHostname, "iphone") || strings.Contains(lowerHostname, "ipad") {
+		return "ios_mobile"
+	}
 
 	// Default for alive hosts with some web services
 	if containsAny(openPorts, []int{80, 443, 8000, 8080}) {
@@ -262,7 +263,6 @@ func PerformScan(ctx context.Context, scanParams *ScanRange) error {
 
 	addScanToHistory(localAppCtx, scanParams) // Add to history before starting scan, passing context
 	runtime.LogDebug(localAppCtx, fmt.Sprintf("PerformScan starting for range %s - %s", scanParams.StartIP, scanParams.EndIP))
-
 
 	portsToScan := defaultPortsToScan
 	if scanParams.Ports != nil && len(scanParams.Ports) > 0 {
@@ -369,5 +369,3 @@ func PerformScan(ctx context.Context, scanParams *ScanRange) error {
 
 	return nil
 }
-
-    

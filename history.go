@@ -1,13 +1,14 @@
-
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"sync"
 	"time"
+
 	// Use Wails runtime for path resolution if needed, or os package
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
@@ -24,8 +25,8 @@ const maxHistoryItems = 10
 const historyFilename = "scan_history.json"
 
 var scanHistory []ScanHistoryItem // Slice to store history items
-var historyMutex sync.Mutex      // Mutex to protect concurrent access to scanHistory
-var historyFilePath string       // Full path to the history file
+var historyMutex sync.Mutex       // Mutex to protect concurrent access to scanHistory
+var historyFilePath string        // Full path to the history file
 
 // initHistory loads scan history from the persistent file on startup.
 func initHistory(ctx AppContext) {
@@ -51,7 +52,6 @@ func initHistory(ctx AppContext) {
 	}
 	historyFilePath = filepath.Join(appDataDir, historyFilename)
 	runtime.LogDebug(ctx, fmt.Sprintf("History file path set to: %s", historyFilePath))
-
 
 	// Attempt to load history from file
 	data, err := os.ReadFile(historyFilePath)
@@ -188,5 +188,3 @@ func (a *App) GetScanHistory() []ScanHistoryItem {
 
 // AppContext is an alias for context.Context for clarity
 type AppContext = context.Context
-
-    
