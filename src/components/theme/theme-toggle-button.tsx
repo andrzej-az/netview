@@ -29,12 +29,18 @@ export function ThemeToggleButton() {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="icon">
+        {/* Updated variant="ghost" to have white text/icon and dark hover/focus */}
+        <Button 
+          variant="ghost" 
+          size="icon" 
+          className="text-white hover:bg-gray-700 hover:text-white focus-visible:ring-offset-gray-900"
+        >
           <Sun className="h-[1.2rem] w-[1.2rem] rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
           <Moon className="absolute h-[1.2rem] w-[1.2rem] rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
           <span className="sr-only">Toggle theme</span>
         </Button>
       </DropdownMenuTrigger>
+      {/* Dropdown content uses standard popover styles based on the overall theme */}
       <DropdownMenuContent align="end">
         <DropdownMenuItem onClick={() => setTheme('light')} aria-selected={theme === 'light'}>
           Light
