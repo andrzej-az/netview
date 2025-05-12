@@ -35,6 +35,8 @@ func (a *App) startup(ctx context.Context) {
 	InitScanner(ctx)
 	// Initialize and load scan history
 	initHistory(ctx) // Pass context for logging
+	// Initialize monitoring components
+	a.InitializeMonitor()
 	runtime.LogInfo(ctx, "Application startup complete.")
 }
 
@@ -49,6 +51,10 @@ func (a *App) ScanNetwork(scanRange *ScanRange) error {
 
 // GetScanHistory is defined in history.go as a method of *App.
 // It will be automatically bound when `app` instance of `*App` is bound.
+
+// StartMonitoring, StopMonitoring, IsMonitoringActive will be defined in monitor.go
+// and bound automatically as methods of *App.
+
 
 func main() {
 	// Create an instance of the app structure
@@ -66,7 +72,7 @@ func main() {
 		BackgroundColour: &options.RGBA{R: 27, G: 38, B: 54, A: 1}, // Dark background, can be adjusted
 		OnStartup:        app.startup,
 		Bind: []interface{}{
-			app, // Binding the app instance makes all its methods (like ScanNetwork, GetScanHistory) available to the frontend.
+			app, // Binding the app instance makes all its methods available to the frontend.
 		},
 		// Enable debug logging for Wails runtime
 		// LogLevel: logger.DEBUG, 
@@ -76,6 +82,5 @@ func main() {
 		println("Error:", err.Error())
 	}
 }
-
 
     

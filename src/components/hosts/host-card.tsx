@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { InfoIcon, WorkflowIcon } from 'lucide-react';
 import { HostIcon } from './host-icon';
+import { cn } from '@/lib/utils';
 
 interface HostCardProps {
   host: Host;
@@ -12,7 +13,11 @@ interface HostCardProps {
 
 export function HostCard({ host, onSelect }: HostCardProps) {
   return (
-    <Card className="hover:shadow-lg transition-shadow duration-200 ease-in-out flex flex-col">
+    <Card className={cn(
+      "hover:shadow-lg transition-shadow duration-200 ease-in-out flex flex-col",
+      host.status === 'offline' && 'opacity-60 filter grayscale'
+      )}
+    >
       <CardHeader className="flex flex-row items-center space-x-4 pb-2">
         <HostIcon deviceType={host.deviceType} className="w-10 h-10 text-accent" />
         <div>

@@ -15,6 +15,11 @@ export interface WailsScanParameters {
   ports: number[]; // List of ports to scan (useSettings provides default if user leaves empty)
 }
 
+export interface HostStatusUpdate {
+  ipAddress: string;
+  isOnline: boolean;
+}
+
 declare global {
   interface Window {
     go: {
@@ -32,6 +37,19 @@ declare global {
            * Retrieves the last 10 custom scan ranges.
            */
           GetScanHistory: () => Promise<ScanHistoryItem[]>;
+          /**
+           * Starts monitoring the provided list of IP addresses for status changes.
+           * Emits 'hostStatusUpdate' events.
+           */
+          StartMonitoring: (ips: string[]) => Promise<void>;
+          /**
+           * Stops any active host monitoring.
+           */
+          StopMonitoring: () => Promise<void>;
+          /**
+           * Checks if monitoring is currently active in the backend.
+           */
+          IsMonitoringActive: () => Promise<boolean>;
         };
       };
     };
@@ -43,11 +61,6 @@ declare global {
       WindowToggleMaximise?: () => Promise<void>; // Can be async
       Quit?: () => void;
       WindowIsMaximised?: () => Promise<boolean>; // Can be async
-      // Add other runtime functions as needed by the app
-      // For example, if using other functions from frontend/wailsjs/runtime/runtime.js:
-      // WindowCenter?: () => void;
-      // WindowSetTitle?: (title: string) => void;
-      // ... etc.
     };
     WailsInvoke: (method: string, ...args: any[]) => Promise<any>;
   }

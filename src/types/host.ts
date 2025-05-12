@@ -26,4 +26,11 @@ export interface Host {
    * The determined type of the device (e.g., 'windows_pc', 'linux_server', 'printer').
    */
   deviceType?: string;
+  /**
+   * The current monitoring status of the host.
+   * 'online': Host is reachable.
+   * 'offline': Host is not reachable.
+   * undefined: Status not determined or monitoring not active for this host.
+   */
+  status?: 'online' | 'offline';
 }

@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { InfoIcon, MoreHorizontal } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { HostIcon } from './host-icon';
+import { cn } from '@/lib/utils';
 
 interface HostListItemProps {
   host: Host;
@@ -20,7 +21,11 @@ export function HostListItem({ host, onSelect }: HostListItemProps) {
 
 
   return (
-    <div className="flex items-center p-3 sm:p-4 border-b last:border-b-0 hover:bg-muted/50 transition-colors duration-150 ease-in-out">
+    <div className={cn(
+      "flex items-center p-3 sm:p-4 border-b last:border-b-0 hover:bg-muted/50 transition-colors duration-150 ease-in-out",
+      host.status === 'offline' && 'opacity-60 filter grayscale'
+      )}
+    >
       <HostIcon deviceType={host.deviceType} className="w-7 h-7 sm:w-8 sm:h-8 text-accent mr-3 sm:mr-4 shrink-0" />
       
       <div className="flex-1 min-w-0 mr-3">
