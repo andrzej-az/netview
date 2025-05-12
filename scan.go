@@ -2,10 +2,14 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"errors" // For errors.Is
 	"fmt"
 	"net"
+	"os/exec"
+	"regexp"
+	"runtime" // To get OS for arp command
 	"strings"
 	"sync"
 	"syscall" // For syscall.ECONNREFUSED
@@ -21,8 +25,8 @@ import (
 type Host struct {
 	IPAddress  string `json:"ipAddress"`
 	Hostname   string `json:"hostname,omitempty"`
-	MACAddress string `json:"macAddress,omitempty"` // Note: Real MAC address retrieval is complex and not implemented here
-	OS         string `json:"os,omitempty"`         // Note: Real OS detection is complex and not implemented here
+	MACAddress string `json:"macAddress,omitempty"`
+	OS         string `json:"os,omitempty"` // Note: Real OS detection is complex and not implemented here
 	OpenPorts  []int  `json:"openPorts,omitempty"`
 	DeviceType string `json:"deviceType,omitempty"`
 }
@@ -41,6 +45,7 @@ const (
 	tcpPingTimeout  = 1 * time.Second // Timeout for TCP "ping" attempts
 	portScanTimeout = 500 * time.Millisecond
 	maxConcurrency  = 100 // Max concurrent goroutines for scanning IPs
+	arpTimeout      = 2 * time.Second // Timeout for ARP command execution
 )
 
 // InitScanner initializes the scanner with the application context.
@@ -94,7 +99,7 @@ func isHostAlive(targetIP string, RTT *time.Duration) bool {
 			// runtime.EventsEmit(appCtx, "scanDebug", fmt.Sprintf("TCP Ping: Host %s is alive (port %d refused by string match, RTT: %s)", targetIP, port, duration))
 			return true
 		}
-		
+
 		// runtime.EventsEmit(appCtx, "scanDebug", fmt.Sprintf("TCP Ping: Host %s other error on port %d: %v. Type: %T. Trying next port.", targetIP, port, err, err))
 		// For other errors (e.g., "no route to host", "network is unreachable"),
 		// it's safer to assume the host is not reachable via this port and try the next.
@@ -123,6 +128,60 @@ func resolveHostname(ipAddress string) string {
 	}
 	return ""
 }
+
+// getMacAddress attempts to retrieve the MAC address for a given IP by parsing the system's ARP table.
+// This is a best-effort approach and might not work on all systems or for all IPs.
+// It does not require root privileges but relies on the `arp` command being available and accessible.
+func getMacAddress(ipAddress string) string {
+	var cmd *exec.Cmd
+	ctx, cancel := context.WithTimeout(context.Background(), arpTimeout)
+	defer cancel()
+
+	switch runtime.GOOS {
+	case "linux", "darwin": // macOS uses similar arp command to Linux
+		// Using -n to prevent DNS resolution, which can be slow.
+		cmd = exec.CommandContext(ctx, "arp", "-n", ipAddress)
+	case "windows":
+		// `arp -a <ip>` might not work; `arp -a` lists all, then we'd filter.
+		// For simplicity here, we'll try `arp -a` and let parsing handle it.
+		// A more robust Windows solution might involve PowerShell or other APIs.
+		cmd = exec.CommandContext(ctx, "arp", "-a", ipAddress) // This specific invocation might not work on all Windows versions
+		// A more common approach for Windows is to call `arp -a` and parse the entire table.
+		// However, this example tries to get a specific entry. If it fails, we'll have to parse the full table.
+	default:
+		// runtime.EventsEmit(appCtx, "scanDebug", fmt.Sprintf("MAC detection: Unsupported OS: %s for IP %s", runtime.GOOS, ipAddress))
+		return "" // Unsupported OS
+	}
+
+	output, err := cmd.Output()
+	if err != nil {
+		// This can happen if the IP is not in the ARP cache, or command fails.
+		// runtime.EventsEmit(appCtx, "scanDebug", fmt.Sprintf("MAC detection: arp command failed for %s: %v. Output: %s", ipAddress, err, string(output)))
+		return ""
+	}
+
+	// Regex to find MAC addresses (common formats)
+	// This regex is quite generic, specific OS outputs might need more tailored regex.
+	// Formats: xx:xx:xx:xx:xx:xx or xx-xx-xx-xx-xx-xx
+	macRegex := regexp.MustCompile(`([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})`)
+
+	scanner := bufio.NewScanner(strings.NewReader(string(output)))
+	for scanner.Scan() {
+		line := scanner.Text()
+		// Check if the line contains the IP address we are looking for.
+		// This is important because `arp -a` on Windows lists all entries.
+		if strings.Contains(line, ipAddress) {
+			match := macRegex.FindString(line)
+			if match != "" {
+				// runtime.EventsEmit(appCtx, "scanDebug", fmt.Sprintf("MAC detection: Found MAC %s for IP %s from line: %s", match, ipAddress, line))
+				return strings.ToUpper(match) // Standardize to uppercase
+			}
+		}
+	}
+	// runtime.EventsEmit(appCtx, "scanDebug", fmt.Sprintf("MAC detection: No MAC address found in arp output for IP %s", ipAddress))
+	return "" // MAC address not found
+}
+
 
 // determineDeviceTypeBasedOnData provides a heuristic for device type.
 func determineDeviceTypeBasedOnData(ipAddress, hostname string, openPorts []int) string {
@@ -288,14 +347,17 @@ func PerformScan(scanParams *ScanRange) error {
 				// Even if no specified ports are open, we found an alive host.
 				// The frontend can decide how to display hosts with no matching open ports.
 				hostname := resolveHostname(ipToScan)
+				macAddress := getMacAddress(ipToScan) // Attempt to get MAC address
 				deviceType := determineDeviceTypeBasedOnData(ipToScan, hostname, openPorts)
+				// OS detection is very complex and usually requires Nmap or similar tools, so it's omitted for this basic scanner.
 
 				host := Host{
 					IPAddress:  ipToScan,
 					Hostname:   hostname,
+					MACAddress: macAddress,
 					OpenPorts:  openPorts,
 					DeviceType: deviceType,
-					// MACAddress and OS are not reliably fetched by this basic scanner
+					OS:         "", // OS detection is complex and not implemented
 				}
 				// runtime.EventsEmit(activeScanCtx, "scanDebug", fmt.Sprintf("Go: Emitting hostFound: %+v", host))
 				runtime.EventsEmit(activeScanCtx, "hostFound", host)
@@ -307,3 +369,6 @@ func PerformScan(scanParams *ScanRange) error {
 
 	return nil
 }
+
+
+    
