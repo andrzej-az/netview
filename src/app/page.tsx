@@ -227,20 +227,32 @@ export default function HomePage() {
       });
 
       unlistenHostStatusUpdate = window.runtime.EventsOn('hostStatusUpdate', (update: HostStatusUpdate) => {
-        setHosts(prevHosts =>
-          prevHosts.map(h =>
-            h.ipAddress === update.ipAddress
-              ? { ...h, status: update.isOnline ? 'online' : 'offline' }
-              : h
-          )
-        );
-        // Avoid finding host from a potentially stale `hosts` closure. Get it from `prevHosts` if needed for toast.
-        const hostForToast = hosts.find(h => h.ipAddress === update.ipAddress);
-        const hostName = hostForToast?.hostname || update.ipAddress;
-        toast({
-          title: `Host ${update.isOnline ? 'Online' : 'Offline'}`,
-          description: `${hostName} is now ${update.isOnline ? 'reachable' : 'unreachable'}.`,
-          variant: update.isOnline ? 'default' : 'destructive',
+        setHosts(prevHosts => {
+          let hostForToast: Host | undefined;
+          const updatedHosts = prevHosts.map(h => {
+            if (h.ipAddress === update.ipAddress) {
+               // Found the host, create the updated version
+              hostForToast = { ...h, status: update.isOnline ? 'online' : 'offline' };
+              return hostForToast; // Return the updated host
+            }
+            return h; // Return unchanged host
+          });
+
+          // Check if we actually found and updated a host
+          if (hostForToast) {
+              const displayIdentifier = hostForToast.hostname || hostForToast.ipAddress;
+              // Trigger toast notification from within the state updater
+              toast({
+                title: `Host ${update.isOnline ? 'Online' : 'Offline'}`,
+                description: `${displayIdentifier} (${hostForToast.ipAddress}) is now ${update.isOnline ? 'reachable' : 'unreachable'}.`,
+                variant: update.isOnline ? 'default' : 'destructive',
+              });
+          } else {
+              // Host wasn't in the list, maybe log this? Or do nothing.
+              console.warn(`Received status update for unmonitored IP: ${update.ipAddress}`);
+          }
+
+          return updatedHosts; // Return the new state array
         });
       });
 
@@ -252,7 +264,7 @@ export default function HomePage() {
       if (unlistenScanError) unlistenScanError();
       if (unlistenHostStatusUpdate) unlistenHostStatusUpdate();
     };
-  }, [toast, hosts]); // `hosts` in dep array for toast messages in hostStatusUpdate
+  }, [toast]); // Removed `hosts` from dependency array as it's no longer needed for the toast logic
 
   const handleHostSelect = (host: Host) => {
     setSelectedHost(host);
