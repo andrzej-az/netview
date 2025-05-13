@@ -1,4 +1,3 @@
-
 // src/types/wails.d.ts
 import type { Host } from '@/types/host';
 
@@ -12,7 +11,9 @@ export interface ScanHistoryItem {
 export interface WailsScanParameters {
   startIp: string; 
   endIp: string;   
-  ports: number[]; // List of ports to scan (useSettings provides default if user leaves empty)
+  ports: number[]; // List of ports to scan for services (from main "effectivePorts")
+  searchHiddenHosts: boolean; // Flag to enable scanning for hidden hosts
+  hiddenHostsPorts: number[]; // Specific ports to probe for hidden host liveness check
 }
 
 export interface HostStatusUpdate {

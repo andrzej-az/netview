@@ -3,6 +3,9 @@ export namespace main {
 	export class ScanRange {
 	    startIp: string;
 	    endIp: string;
+	    ports: number[];
+	    searchHiddenHosts: boolean;
+	    hiddenHostsPorts: number[];
 	
 	    static createFrom(source: any = {}) {
 	        return new ScanRange(source);
@@ -12,6 +15,9 @@ export namespace main {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.startIp = source["startIp"];
 	        this.endIp = source["endIp"];
+	        this.ports = source["ports"];
+	        this.searchHiddenHosts = source["searchHiddenHosts"];
+	        this.hiddenHostsPorts = source["hiddenHostsPorts"];
 	    }
 	}
 

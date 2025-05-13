@@ -1,4 +1,3 @@
-
 // src/services/network-scanner.ts
 import type { Host } from '@/types/host';
 import { DEFAULT_PORTS } from '@/types/settings';
@@ -45,16 +44,21 @@ const mockHostsData: Host[] = [
   { ipAddress: "192.168.1.107", hostname: "macbook-pro.local", macAddress: "F0:E1:D2:C3:B4:A5", os: "macOS Sonoma (Mock)", openPorts: [22, 445], deviceType: "macos_pc"},
   { ipAddress: "10.0.0.1", hostname: "gateway.corp", macAddress: "B1:C2:D3:E4:F5:00", os: "FirewallOS (Mock)", openPorts: [22, 443], deviceType: "router_firewall" },
   { ipAddress: "10.0.0.50", hostname: "dev-vm.corp", macAddress: "C1:D2:E3:F4:05:01", os: "Linux (Dev VM) (Mock)", openPorts: [22, 8000, 9000, 8080], deviceType: "linux_server" },
+  { ipAddress: "192.168.1.250", hostname: "hidden-iot-device.local", macAddress: "01:23:45:67:89:AB", os: "Custom IoT OS (Mock)", openPorts: [7, 13], deviceType: "generic_device" }, // Example hidden device
 ];
 
 export async function scanNetwork(
-  scanParameters: WailsScanParameters, // Using WailsScanParameters which now implies startIp and endIp are mandatory
+  scanParameters: WailsScanParameters, 
   onHostFound?: (host: Host) => void,
   onScanComplete?: () => void
 ): Promise<void> {
   console.log("Mock Service: scanNetwork (streaming) called with params:", scanParameters);
   
-  const portsToScan = scanParameters.ports && scanParameters.ports.length > 0 ? scanParameters.ports : DEFAULT_PORTS;
+  // These are the ports to check for services on already discovered hosts
+  const servicePortsToCheck = scanParameters.ports && scanParameters.ports.length > 0 ? scanParameters.ports : DEFAULT_PORTS;
+
+  // These are additional ports to use for the liveness check if searchHiddenHosts is true
+  const hiddenLivenessPorts = scanParameters.searchHiddenHosts ? scanParameters.hiddenHostsPorts : [];
 
   return new Promise((resolve) => {
     if (!scanParameters.startIp || !scanParameters.endIp) {
@@ -79,14 +83,22 @@ export async function scanNetwork(
       return hostIPNum !== null && hostIPNum >= startIPNum && hostIPNum <= endIPNum;
     });
     
-    // Ensure deviceType is set for filtered hosts if not already set (or re-evaluate for mock)
     hostsToScan = hostsToScan.map(host => ({
         ...host,
         deviceType: host.deviceType || mockDetermineDeviceType(host.os)
     }));
 
+    // Mock: If searchHiddenHosts is true, some hosts might only "respond" if one of their openPorts matches hiddenLivenessPorts
+    // This is a very simplified simulation
+    if (scanParameters.searchHiddenHosts && hiddenLivenessPorts.length > 0) {
+      console.log("Mock Service: Simulating hidden host search with ports:", hiddenLivenessPorts);
+      // For this mock, we don't need complex logic, just acknowledge the params.
+      // Real backend would use hiddenLivenessPorts in its `isHostAlive` check.
+    }
+
+
     if (hostsToScan.length === 0) {
-        console.log("Mock Service: No hosts to scan in the given range/criteria.");
+        console.log("Mock Service: No hosts to scan in the given range/criteria after filtering.");
     }
 
     let index = 0;
@@ -94,16 +106,17 @@ export async function scanNetwork(
       if (index < hostsToScan.length) {
         const originalHost = hostsToScan[index];
         
+        // Simulate filtering open ports based on what was requested to be scanned for services
         const actualOpenPorts = originalHost.openPorts 
-          ? originalHost.openPorts.filter(port => portsToScan.includes(port))
+          ? originalHost.openPorts.filter(port => servicePortsToCheck.includes(port))
           : [];
         
         const hostToSend: Host = {
           ...originalHost,
-          openPorts: actualOpenPorts,
+          openPorts: actualOpenPorts, // Only list ports that were in the 'servicePortsToCheck'
         };
         
-        console.log(`Mock Service: Simulating host found: ${hostToSend.ipAddress} (Type: ${hostToSend.deviceType}) with open ports ${JSON.stringify(hostToSend.openPorts)} (scanned for ${JSON.stringify(portsToScan)})`);
+        console.log(`Mock Service: Simulating host found: ${hostToSend.ipAddress} (Type: ${hostToSend.deviceType}). Service ports checked: ${JSON.stringify(servicePortsToCheck)}, found open: ${JSON.stringify(hostToSend.openPorts)}.`);
         if (onHostFound) {
           onHostFound(hostToSend);
         }
@@ -122,7 +135,7 @@ export async function scanNetwork(
         setTimeout(sendHost, 200); 
     } else { 
         setTimeout(() => { 
-            console.log("Mock Service: Simulating scan complete (no hosts in custom range)");
+            console.log("Mock Service: Simulating scan complete (no hosts in custom range or matching criteria)");
             if (onScanComplete) {
               onScanComplete();
             }

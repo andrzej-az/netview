@@ -1,4 +1,3 @@
-
 // src/components/settings/settings-dialog.tsx
 'use client';
 
@@ -16,10 +15,11 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Checkbox } from '@/components/ui/checkbox'; // Import Checkbox
 import { useSettings } from '@/hooks/use-settings';
 import { useToast } from '@/hooks/use-toast';
-import { DEFAULT_PORTS_STRING } from '@/types/settings';
-import { SaveIcon, Settings2Icon, RotateCcwIcon, Moon, Sun, Laptop } from 'lucide-react';
+import { DEFAULT_PORTS_STRING, DEFAULT_HIDDEN_HOSTS_PORTS_STRING } from '@/types/settings';
+import { SaveIcon, Settings2Icon, RotateCcwIcon, Moon, Sun, Laptop, EyeIcon, EyeOffIcon } from 'lucide-react';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { useTheme } from '@/components/theme/theme-provider';
 import { Separator } from '@/components/ui/separator';
@@ -30,55 +30,84 @@ interface SettingsDialogProps {
 }
 
 export const SettingsDialog: FC<SettingsDialogProps> = ({ isOpen, onOpenChange }) => {
-  const { customPortsString, setCustomPortsString, isLoaded: settingsLoaded } = useSettings();
+  const { 
+    customPortsString, setCustomPortsString, 
+    searchHiddenHosts, setSearchHiddenHosts,
+    hiddenHostsPortsString, setHiddenHostsPortsString,
+    isLoaded: settingsLoaded 
+  } = useSettings();
+  
   const [localPortsString, setLocalPortsString] = useState<string>('');
-  const { theme, setTheme, effectiveTheme } = useTheme(); // Added theme state
-  const [localTheme, setLocalTheme] = useState(theme); // Local state for radio group
+  const [localSearchHiddenHosts, setLocalSearchHiddenHosts] = useState<boolean>(false);
+  const [localHiddenHostsPortsString, setLocalHiddenHostsPortsString] = useState<string>('');
+  
+  const { theme, setTheme, effectiveTheme } = useTheme(); 
+  const [localTheme, setLocalTheme] = useState(theme); 
   const { toast } = useToast();
 
   useEffect(() => {
     if (isOpen && settingsLoaded) {
       setLocalPortsString(customPortsString);
-      setLocalTheme(theme); // Sync local theme state when dialog opens
+      setLocalSearchHiddenHosts(searchHiddenHosts);
+      setLocalHiddenHostsPortsString(hiddenHostsPortsString);
+      setLocalTheme(theme); 
     }
-  }, [isOpen, settingsLoaded, customPortsString, theme]);
+  }, [isOpen, settingsLoaded, customPortsString, searchHiddenHosts, hiddenHostsPortsString, theme]);
 
-  const handleSave = () => {
-    // Validate ports string (basic validation, could be more advanced)
-    const ports = localPortsString
+  const validatePortsList = (portsListString: string): string[] => {
+    return portsListString
       .split(',')
       .map(s => s.trim())
-      .filter(s => s !== '');
+      .filter(s => s !== '')
+      .filter(p => {
+        const num = parseInt(p, 10);
+        return isNaN(num) || num < 1 || num > 65535;
+      });
+  };
 
-    const invalidPorts = ports.filter(p => {
-      const num = parseInt(p, 10);
-      return isNaN(num) || num < 1 || num > 65535;
-    });
-
-    if (invalidPorts.length > 0) {
+  const handleSave = () => {
+    const invalidMainPorts = validatePortsList(localPortsString);
+    if (invalidMainPorts.length > 0) {
       toast({
-        title: 'Invalid Ports',
-        description: `The following ports are invalid: ${invalidPorts.join(', ')}. Ports must be numbers between 1 and 65535.`,
+        title: 'Invalid Main Ports',
+        description: `The following ports are invalid: ${invalidMainPorts.join(', ')}. Ports must be numbers between 1 and 65535.`,
         variant: 'destructive',
       });
       return;
     }
 
-    // Save ports
+    if (localSearchHiddenHosts) {
+      const invalidHiddenPorts = validatePortsList(localHiddenHostsPortsString);
+      if (invalidHiddenPorts.length > 0) {
+        toast({
+          title: 'Invalid Hidden Hosts Ports',
+          description: `The following ports are invalid: ${invalidHiddenPorts.join(', ')}. Ports must be numbers between 1 and 65535.`,
+          variant: 'destructive',
+        });
+        return;
+      }
+    }
+
+    // Save settings
     setCustomPortsString(localPortsString);
-    // Save theme
+    setSearchHiddenHosts(localSearchHiddenHosts);
+    setHiddenHostsPortsString(localHiddenHostsPortsString);
     setTheme(localTheme);
 
     toast({
       title: 'Settings Saved',
-      description: 'Your custom port and theme settings have been updated.',
+      description: 'Your settings have been updated.',
     });
     onOpenChange(false);
   };
 
-  const handleResetToDefault = () => {
+  const handleResetMainPorts = () => {
     setLocalPortsString(DEFAULT_PORTS_STRING);
   };
+
+  const handleResetHiddenPorts = () => {
+    setLocalHiddenHostsPortsString(DEFAULT_HIDDEN_HOSTS_PORTS_STRING);
+  }
 
   if (!settingsLoaded && isOpen) {
     return (
@@ -106,12 +135,12 @@ export const SettingsDialog: FC<SettingsDialogProps> = ({ isOpen, onOpenChange }
             Customize network scanning parameters and application appearance.
           </DialogDescription>
         </DialogHeader>
-        <div className="space-y-6 py-4">
-          {/* Port Settings Section */}
+        <div className="space-y-6 py-4 max-h-[70vh] overflow-y-auto pr-2">
+          {/* Scan Settings Section */}
           <div className="space-y-4">
             <h3 className="text-sm font-medium text-muted-foreground">Scan Settings</h3>
             <div className="space-y-2 pl-2">
-              <Label htmlFor="custom-ports">Custom Ports to Scan</Label>
+              <Label htmlFor="custom-ports">Main Ports to Scan for Services</Label>
               <Input
                 id="custom-ports"
                 placeholder="e.g., 22, 80, 443, 3000"
@@ -119,15 +148,57 @@ export const SettingsDialog: FC<SettingsDialogProps> = ({ isOpen, onOpenChange }
                 onChange={(e) => setLocalPortsString(e.target.value)}
               />
               <p className="text-xs text-muted-foreground">
-                Enter comma-separated port numbers. If empty, defaults will be used ({DEFAULT_PORTS_STRING}).
+                Comma-separated. If empty, defaults to: ({DEFAULT_PORTS_STRING}). These ports are checked for services on discovered hosts.
               </p>
             </div>
-             <div className="pl-2">
-                 <Button variant="outline" size="sm" onClick={handleResetToDefault} className="w-full sm:w-auto">
-                    <RotateCcwIcon className="mr-2 h-4 w-4" />
-                    Reset to Default Ports
-                 </Button>
+            <div className="pl-2">
+              <Button variant="outline" size="sm" onClick={handleResetMainPorts} className="w-full sm:w-auto">
+                <RotateCcwIcon className="mr-2 h-4 w-4" />
+                Reset Main Ports
+              </Button>
             </div>
+          </div>
+
+          <Separator />
+
+          {/* Hidden Host Discovery Section */}
+          <div className="space-y-4">
+            <h3 className="text-sm font-medium text-muted-foreground">Hidden Host Discovery</h3>
+            <div className="items-top flex space-x-2 pl-2">
+              <Checkbox 
+                id="search-hidden-hosts"
+                checked={localSearchHiddenHosts}
+                onCheckedChange={(checked) => setLocalSearchHiddenHosts(checked as boolean)}
+              />
+              <div className="grid gap-1.5 leading-none">
+                <Label htmlFor="search-hidden-hosts" className="font-normal cursor-pointer">
+                  Enable advanced discovery for hidden hosts
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  Probes additional ports to find hosts that might not respond to standard pings or common service ports.
+                </p>
+              </div>
+            </div>
+
+            {localSearchHiddenHosts && (
+              <div className="space-y-2 pl-6">
+                <Label htmlFor="hidden-hosts-ports">Additional Ports for Hidden Host Discovery</Label>
+                <Input
+                  id="hidden-hosts-ports"
+                  placeholder="e.g., 7, 9, 13, 19"
+                  value={localHiddenHostsPortsString}
+                  onChange={(e) => setLocalHiddenHostsPortsString(e.target.value)}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Comma-separated. These ports are used in the initial liveness check if enabled above.
+                  If empty and enabled, no extra ports are probed for liveness.
+                </p>
+                <Button variant="outline" size="sm" onClick={handleResetHiddenPorts} className="w-full sm:w-auto mt-1">
+                    <RotateCcwIcon className="mr-2 h-4 w-4" />
+                    Reset Hidden Discovery Ports
+                 </Button>
+              </div>
+            )}
           </div>
 
           <Separator />
@@ -161,7 +232,7 @@ export const SettingsDialog: FC<SettingsDialogProps> = ({ isOpen, onOpenChange }
             </p>
           </div>
         </div>
-        <DialogFooter>
+        <DialogFooter className="pt-4 border-t">
           <DialogClose asChild>
             <Button type="button" variant="outline">
               Cancel

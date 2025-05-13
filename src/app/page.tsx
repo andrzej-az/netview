@@ -47,7 +47,12 @@ export default function HomePage() {
 
 
   const { toast } = useToast();
-  const { effectivePorts, isLoaded: settingsLoaded } = useSettings();
+  const { 
+    effectivePorts, 
+    searchHiddenHosts, 
+    parsedHiddenHostsPorts, 
+    isLoaded: settingsLoaded 
+  } = useSettings();
 
   useEffect(() => {
     const startOctets = startIp.split('.');
@@ -122,7 +127,9 @@ export default function HomePage() {
     const scanParameters: WailsScanParameters = {
         startIp: rangeInput.startIp,
         endIp: rangeInput.endIp,
-        ports: effectivePorts
+        ports: effectivePorts,
+        searchHiddenHosts: searchHiddenHosts,
+        hiddenHostsPorts: parsedHiddenHostsPorts,
     };
 
     try {
@@ -157,7 +164,7 @@ export default function HomePage() {
       setHosts([]);
       setIsScanning(false);
     }
-  }, [toast, effectivePorts, settingsLoaded, isMonitoring]);
+  }, [toast, effectivePorts, searchHiddenHosts, parsedHiddenHostsPorts, settingsLoaded, isMonitoring]);
 
   useEffect(() => {
     // Check initial monitoring status from backend

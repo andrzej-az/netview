@@ -30,15 +30,17 @@ type Host struct {
 	DeviceType string `json:"deviceType,omitempty"`
 }
 
-// ScanRange struct for custom IP range scanning, now also includes ports
+// ScanRange struct for custom IP range scanning, now also includes ports and hidden host options
 type ScanRange struct {
-	StartIP string `json:"startIp"`
-	EndIP   string `json:"endIp"`
-	Ports   []int  `json:"ports,omitempty"` // Ports to scan
+	StartIP           string `json:"startIp"`
+	EndIP             string `json:"endIp"`
+	Ports             []int  `json:"ports,omitempty"`             // Ports to scan for services
+	SearchHiddenHosts bool   `json:"searchHiddenHosts"`       // Flag to enable scanning for hidden hosts
+	HiddenHostsPorts  []int  `json:"hiddenHostsPorts,omitempty"` // Specific ports to probe for hidden host liveness
 }
 
 var appCtx context.Context
-var defaultPortsToScan = []int{22, 80, 443, 8080, 445} // Default ports if not specified by user
+var defaultPortsToScan = []int{22, 80, 443, 8080, 445} // Default service ports if not specified by user
 
 const (
 	tcpPingTimeout  = 200 * time.Millisecond // Timeout for TCP "ping" attempts
@@ -52,60 +54,69 @@ func InitScanner(ctx context.Context) {
 	appCtx = ctx
 }
 
-// isHostAlive attempts a TCP connection to common ports to check for liveness.
-// This does not require administrator/root privileges.
+// isHostAlive attempts a TCP connection to common ports and optionally specified hidden ports to check for liveness.
 // RTT will be the time taken for the first successful or refused connection.
-func isHostAlive(targetIP string, RTT *time.Duration) bool {
+func isHostAlive(targetIP string, RTT *time.Duration, searchHidden bool, hiddenPorts []int) bool {
 	*RTT = -1 // Default to invalid RTT
 
-	// Ports to try for a "TCP ping".
-	// Common ports that are likely to elicit a quick response (open or RST).
-	probePorts := []int{80, 443, 135, 445, 22} // Common ports
+	// Default ports to try for a "TCP ping".
+	defaultProbePorts := []int{80, 443, 135, 445, 22} // Common ports
 
-	for _, port := range probePorts {
+	allPortsToProbe := make([]int, len(defaultProbePorts))
+	copy(allPortsToProbe, defaultProbePorts)
+
+	if searchHidden && len(hiddenPorts) > 0 {
+		// Add hidden ports, avoiding duplicates if they overlap with defaultProbePorts
+		existingPorts := make(map[int]bool)
+		for _, p := range allPortsToProbe {
+			existingPorts[p] = true
+		}
+		for _, hp := range hiddenPorts {
+			if !existingPorts[hp] {
+				allPortsToProbe = append(allPortsToProbe, hp)
+				existingPorts[hp] = true // Add to map to track for future hidden ports
+			}
+		}
+		// runtime.EventsEmit(appCtx, "scanDebug", fmt.Sprintf("TCP Ping: Probing default + hidden ports for %s: %v", targetIP, allPortsToProbe))
+	} else {
+		// runtime.EventsEmit(appCtx, "scanDebug", fmt.Sprintf("TCP Ping: Probing default ports for %s: %v", targetIP, allPortsToProbe))
+	}
+
+
+	for _, port := range allPortsToProbe {
 		address := fmt.Sprintf("%s:%d", targetIP, port)
 		startTime := time.Now()
 		conn, err := net.DialTimeout("tcp", address, tcpPingTimeout)
 		duration := time.Since(startTime)
 
 		if err == nil {
-			// Connection successful, host is alive.
 			conn.Close()
 			*RTT = duration
 			// runtime.EventsEmit(appCtx, "scanDebug", fmt.Sprintf("TCP Ping: Host %s is alive (port %d open, RTT: %s)", targetIP, port, duration))
 			return true
 		}
 
-		// If it's a timeout, host is likely down or unresponsive on this port.
-		// We continue to the next probe port.
 		if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
 			// runtime.EventsEmit(appCtx, "scanDebug", fmt.Sprintf("TCP Ping: Host %s timeout on port %d", targetIP, port))
 			continue
 		}
 
-		// Check if the error is syscall.ECONNREFUSED (connection refused).
-		// This indicates the host is up but the port is closed.
 		if errors.Is(err, syscall.ECONNREFUSED) {
 			*RTT = duration
 			// runtime.EventsEmit(appCtx, "scanDebug", fmt.Sprintf("TCP Ping: Host %s is alive (port %d refused - ECONNREFUSED, RTT: %s)", targetIP, port, duration))
 			return true
 		}
-
-		// Fallback for systems (like Windows) where ECONNREFUSED might not be wrapped as syscall.Errno directly,
-		// or for other errors that might still imply liveness if it's a "connection refused" type message.
+		
 		if strings.Contains(strings.ToLower(err.Error()), "connection refused") {
 			*RTT = duration
 			// runtime.EventsEmit(appCtx, "scanDebug", fmt.Sprintf("TCP Ping: Host %s is alive (port %d refused by string match, RTT: %s)", targetIP, port, duration))
 			return true
 		}
-
 		// runtime.EventsEmit(appCtx, "scanDebug", fmt.Sprintf("TCP Ping: Host %s other error on port %d: %v. Type: %T. Trying next port.", targetIP, port, err, err))
-		// For other errors (e.g., "no route to host", "network is unreachable"),
-		// it's safer to assume the host is not reachable via this port and try the next.
 	}
 
 	// runtime.EventsEmit(appCtx, "scanDebug", fmt.Sprintf("TCP Ping: Host %s appears down after trying all probe ports.", targetIP))
-	return false // Host did not respond affirmatively on any probe port.
+	return false 
 }
 
 // scanPort checks if a specific port is open on the target IP.
@@ -129,97 +140,69 @@ func resolveHostname(ipAddress string) string {
 }
 
 // getMacAddress attempts to retrieve the MAC address for a given IP by parsing the system's ARP table.
-// This is a best-effort approach and might not work on all systems or for all IPs.
-// It does not require root privileges but relies on the `arp` command being available and accessible.
 func getMacAddress(ipAddress string) string {
 	var cmd *exec.Cmd
 	ctx, cancel := context.WithTimeout(context.Background(), arpTimeout)
 	defer cancel()
 
 	switch runtime_go.GOOS {
-	case "linux", "darwin": // macOS uses similar arp command to Linux
-		// Using -n to prevent DNS resolution, which can be slow.
+	case "linux", "darwin": 
 		cmd = exec.CommandContext(ctx, "arp", "-n", ipAddress)
 	case "windows":
-		// `arp -a <ip>` might not work; `arp -a` lists all, then we'd filter.
-		// For simplicity here, we'll try `arp -a` and let parsing handle it.
-		// A more robust Windows solution might involve PowerShell or other APIs.
-		cmd = exec.CommandContext(ctx, "arp", "-a", ipAddress) // This specific invocation might not work on all Windows versions
-		// A more common approach for Windows is to call `arp -a` and parse the entire table.
-		// However, this example tries to get a specific entry. If it fails, we'll have to parse the full table.
+		cmd = exec.CommandContext(ctx, "arp", "-a", ipAddress) 
 	default:
-		// runtime.EventsEmit(appCtx, "scanDebug", fmt.Sprintf("MAC detection: Unsupported OS: %s for IP %s", runtime.GOOS, ipAddress))
-		return "" // Unsupported OS
+		return "" 
 	}
 
 	output, err := cmd.Output()
 	if err != nil {
-		// This can happen if the IP is not in the ARP cache, or command fails.
-		// runtime.EventsEmit(appCtx, "scanDebug", fmt.Sprintf("MAC detection: arp command failed for %s: %v. Output: %s", ipAddress, err, string(output)))
 		return ""
 	}
 
-	// Regex to find MAC addresses (common formats)
-	// This regex is quite generic, specific OS outputs might need more tailored regex.
-	// Formats: xx:xx:xx:xx:xx:xx or xx-xx-xx-xx-xx-xx
 	macRegex := regexp.MustCompile(`([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})`)
-
 	scanner := bufio.NewScanner(strings.NewReader(string(output)))
 	for scanner.Scan() {
 		line := scanner.Text()
-		// Check if the line contains the IP address we are looking for.
-		// This is important because `arp -a` on Windows lists all entries.
 		if strings.Contains(line, ipAddress) {
 			match := macRegex.FindString(line)
 			if match != "" {
-				// runtime.EventsEmit(appCtx, "scanDebug", fmt.Sprintf("MAC detection: Found MAC %s for IP %s from line: %s", match, ipAddress, line))
-				return strings.ToUpper(match) // Standardize to uppercase
+				return strings.ToUpper(match) 
 			}
 		}
 	}
-	// runtime.EventsEmit(appCtx, "scanDebug", fmt.Sprintf("MAC detection: No MAC address found in arp output for IP %s", ipAddress))
-	return "" // MAC address not found
+	return "" 
 }
 
 // determineDeviceTypeBasedOnData provides a heuristic for device type.
 func determineDeviceTypeBasedOnData(ipAddress, hostname string, openPorts []int) string {
 	lowerHostname := strings.ToLower(hostname)
 
-	// Printers
 	if strings.Contains(lowerHostname, "printer") || containsAny(openPorts, []int{631, 9100, 515}) {
 		return "printer"
 	}
-	// Routers/Firewalls
 	if strings.Contains(lowerHostname, "router") || strings.Contains(lowerHostname, "gateway") ||
 		strings.Contains(lowerHostname, "firewall") || strings.Contains(lowerHostname, "switch") ||
-		ipAddress == "192.168.1.1" || ipAddress == "192.168.0.1" || ipAddress == "10.0.0.1" { // Common gateway IPs
+		ipAddress == "192.168.1.1" || ipAddress == "192.168.0.1" || ipAddress == "10.0.0.1" { 
 		return "router_firewall"
 	}
 
-	// Windows
-	if containsAny(openPorts, []int{135, 137, 138, 139, 445, 3389}) { // RPC, NetBIOS, SMB, RDP
+	if containsAny(openPorts, []int{135, 137, 138, 139, 445, 3389}) { 
 		return "windows_pc"
 	}
-	// macOS (often has SSH, AFP/SMB might be open)
 	if strings.Contains(lowerHostname, "macbook") || strings.Contains(lowerHostname, "imac") || strings.Contains(lowerHostname, "apple") || (containsAny(openPorts, []int{22, 548, 445}) && !strings.Contains(lowerHostname, "linux")) {
-		// Checking for common Mac services or hostname patterns
 		return "macos_pc"
 	}
 
-	// Linux Servers / PCs
 	hasSSH := containsAny(openPorts, []int{22})
 	if hasSSH {
 		if strings.Contains(lowerHostname, "server") || strings.Contains(lowerHostname, "nas") ||
 			strings.Contains(lowerHostname, "ubuntu-server") || strings.Contains(lowerHostname, "centos") ||
-			strings.Contains(lowerHostname, "debian") || containsAny(openPorts, []int{5000, 5001, 8080, 8000, 3000}) { // Common web/app/NAS ports
+			strings.Contains(lowerHostname, "debian") || containsAny(openPorts, []int{5000, 5001, 8080, 8000, 3000}) { 
 			return "linux_server"
 		}
 		return "linux_pc"
 	}
 
-	// Mobile devices (harder to detect without OS fingerprinting or specific app ports)
-	// Basic check if common mobile related services are open (less reliable)
-	// Or if hostname indicates. Often mobiles are DHCP and don't have many open ports.
 	if strings.Contains(lowerHostname, "android") {
 		return "android_mobile"
 	}
@@ -227,12 +210,11 @@ func determineDeviceTypeBasedOnData(ipAddress, hostname string, openPorts []int)
 		return "ios_mobile"
 	}
 
-	// Default for alive hosts with some web services
 	if containsAny(openPorts, []int{80, 443, 8000, 8080}) {
-		return "generic_device" // Could be a web server, IoT device, etc.
+		return "generic_device" 
 	}
 
-	return "generic_device" // Fallback for any other alive device
+	return "generic_device" 
 }
 
 // containsAny checks if a slice of ints contains any of the elements from another slice.
@@ -252,24 +234,27 @@ func PerformScan(ctx context.Context, scanParams *ScanRange) error {
 	if ctx == nil {
 		return fmt.Errorf("scanner not initialized with context")
 	}
-	localAppCtx := ctx // Use the passed context for this scan operation
+	localAppCtx := ctx 
 
 	if scanParams == nil || scanParams.StartIP == "" || scanParams.EndIP == "" {
 		errMsg := "PerformScan requires a valid start and end IP address."
 		runtime.EventsEmit(localAppCtx, "scanError", errMsg)
-		runtime.EventsEmit(localAppCtx, "scanComplete", false) // Signal unsuccessful completion
+		runtime.EventsEmit(localAppCtx, "scanComplete", false) 
 		return fmt.Errorf(errMsg)
 	}
 
-	addScanToHistory(localAppCtx, scanParams) // Add to history before starting scan, passing context
-	runtime.LogDebug(localAppCtx, fmt.Sprintf("PerformScan starting for range %s - %s", scanParams.StartIP, scanParams.EndIP))
+	addScanToHistory(localAppCtx, scanParams) 
+	runtime.LogDebug(localAppCtx, fmt.Sprintf("PerformScan starting for range %s - %s. SearchHidden: %t, HiddenPorts: %v, ServicePorts: %v", 
+		scanParams.StartIP, scanParams.EndIP, scanParams.SearchHiddenHosts, scanParams.HiddenHostsPorts, scanParams.Ports))
 
-	portsToScan := defaultPortsToScan
+
+	// These are ports to check for services AFTER host is found alive
+	servicePortsToScan := defaultPortsToScan 
 	if scanParams.Ports != nil && len(scanParams.Ports) > 0 {
-		portsToScan = scanParams.Ports
-		runtime.LogDebug(localAppCtx, fmt.Sprintf("Scanning with custom ports: %v", portsToScan))
+		servicePortsToScan = scanParams.Ports
+		runtime.LogDebug(localAppCtx, fmt.Sprintf("Scanning for services on custom ports: %v", servicePortsToScan))
 	} else {
-		runtime.LogDebug(localAppCtx, fmt.Sprintf("Scanning with default ports: %v", portsToScan))
+		runtime.LogDebug(localAppCtx, fmt.Sprintf("Scanning for services on default ports: %v", servicePortsToScan))
 	}
 
 	startIPNum, errStart := ipToUint32(scanParams.StartIP)
@@ -291,44 +276,43 @@ func PerformScan(ctx context.Context, scanParams *ScanRange) error {
 	var wg sync.WaitGroup
 	semaphore := make(chan struct{}, maxConcurrency)
 
-	go func() { // Main scanning goroutine
-		// Use the context passed into PerformScan for cancellation checks
+	go func() { 
 		defer func() {
 			runtime.LogDebug(localAppCtx, "Scan goroutine finished. Emitting scanComplete.")
-			runtime.EventsEmit(localAppCtx, "scanComplete", true) // True indicates the scan process itself completed
+			runtime.EventsEmit(localAppCtx, "scanComplete", true) 
 		}()
 
 		for i := uint32(0); i <= (endIPNum - startIPNum); i++ {
 			select {
-			case <-localAppCtx.Done(): // Check for cancellation (e.g., app closing)
+			case <-localAppCtx.Done(): 
 				runtime.LogDebug(localAppCtx, "Scan cancelled via context.")
 				return
 			default:
-				// Continue scanning
 			}
 
 			currentIPNum := startIPNum + i
 			ipStr := uint32ToIP(currentIPNum)
 
 			wg.Add(1)
-			semaphore <- struct{}{} // Acquire semaphore
+			semaphore <- struct{}{} 
 
 			go func(ipToScan string) {
 				defer wg.Done()
-				defer func() { <-semaphore }() // Release semaphore
+				defer func() { <-semaphore }() 
 
 				var rtt time.Duration
-				if !isHostAlive(ipToScan, &rtt) {
-					return // Host is not alive or did not respond to ping
+				// Pass SearchHiddenHosts and HiddenHostsPorts to isHostAlive
+				if !isHostAlive(ipToScan, &rtt, scanParams.SearchHiddenHosts, scanParams.HiddenHostsPorts) {
+					return 
 				}
-				// runtime.EventsEmit(localAppCtx, "scanDebug", fmt.Sprintf("Go: Host %s is alive (RTT: %s). Scanning ports...", ipToScan, rtt.String()))
+				// runtime.EventsEmit(localAppCtx, "scanDebug", fmt.Sprintf("Go: Host %s is alive (RTT: %s). Scanning service ports...", ipToScan, rtt.String()))
+
 
 				var openPorts []int
-				// Scan ports concurrently for an alive host
 				var portWg sync.WaitGroup
-				openPortsChan := make(chan int, len(portsToScan))
+				openPortsChan := make(chan int, len(servicePortsToScan))
 
-				for _, port := range portsToScan {
+				for _, port := range servicePortsToScan {
 					portWg.Add(1)
 					go func(p int) {
 						defer portWg.Done()
@@ -343,28 +327,24 @@ func PerformScan(ctx context.Context, scanParams *ScanRange) error {
 				for p := range openPortsChan {
 					openPorts = append(openPorts, p)
 				}
-
-				// Even if no specified ports are open, we found an alive host.
-				// The frontend can decide how to display hosts with no matching open ports.
+				
 				hostname := resolveHostname(ipToScan)
-				macAddress := getMacAddress(ipToScan) // Attempt to get MAC address
+				macAddress := getMacAddress(ipToScan) 
 				deviceType := determineDeviceTypeBasedOnData(ipToScan, hostname, openPorts)
-				// OS detection is very complex and usually requires Nmap or similar tools, so it's omitted for this basic scanner.
-
+				
 				host := Host{
 					IPAddress:  ipToScan,
 					Hostname:   hostname,
 					MACAddress: macAddress,
-					OpenPorts:  openPorts,
+					OpenPorts:  openPorts, // These are the service ports found open
 					DeviceType: deviceType,
-					OS:         "", // OS detection is complex and not implemented
+					OS:         "", 
 				}
-				// runtime.EventsEmit(localAppCtx, "scanDebug", fmt.Sprintf("Go: Emitting hostFound: %+v", host))
-				runtime.EventsEmit(localAppCtx, "hostFound", host) // Use the scan's context
+				runtime.EventsEmit(localAppCtx, "hostFound", host) 
 
 			}(ipStr)
 		}
-		wg.Wait() // Wait for all IP scanning goroutines to complete
+		wg.Wait() 
 	}()
 
 	return nil
