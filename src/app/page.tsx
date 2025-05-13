@@ -1,9 +1,11 @@
 
 'use client';
 
-import type { Host } from '@/types/host';
+// Use Wails generated Host type
+import type { Host as WailsHost, ScanHistoryItem, WailsScanParameters, HostStatusUpdate } from '@/types/wails';
 // Ensure wails.d.ts is picked up
 /// <reference types="@/types/wails" />
+
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { scanNetwork as mockScanNetworkService } from '@/services/network-scanner';
@@ -18,26 +20,24 @@ import { Loader2, ServerCrash, WifiOffIcon, ScanSearch, LayoutGrid, List, Search
 import { Skeleton } from '@/components/ui/skeleton';
 import { isValidIp, isValidOctet, ipToNumber } from '@/lib/ip-utils';
 import { useToast } from '@/hooks/use-toast';
-// import { CustomRangeDialog } from '@/components/network/custom-range-dialog'; // No longer needed
-import { IpRangeInput } from '@/components/network/ip-range-input'; // Keep this
+import { IpRangeInput } from '@/components/network/ip-range-input'; 
 import { ScanHistoryDrawer } from '@/components/history/scan-history-drawer';
 import { SettingsDialog } from '@/components/settings/settings-dialog';
 import { useSettings } from '@/hooks/use-settings';
-import type { WailsScanParameters, HostStatusUpdate } from '@/types/wails';
-import { Card, CardContent } from '@/components/ui/card'; // For wrapping IP input
+import { Card, CardContent } from '@/components/ui/card'; 
+import type { Host as FrontendHost } from '@/types/host'; // Keep frontend Host type for local state
 
 export default function HomePage() {
-  const [hosts, setHosts] = useState<Host[]>([]);
-  const [selectedHost, setSelectedHost] = useState<Host | null>(null);
+  const [hosts, setHosts] = useState<FrontendHost[]>([]); // Local state uses FrontendHost
+  const [selectedHost, setSelectedHost] = useState<FrontendHost | null>(null);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const [startIp, setStartIp] = useState<string>('');
   const [endIp, setEndIp] = useState<string>('');
-  // const [isCustomRangeDialogOpen, setIsCustomRangeDialogOpen] = useState(false); // Removed
 
-  const [scanInitiated, setScanInitiated] = useState(false); // Track if a scan has been run
+  const [scanInitiated, setScanInitiated] = useState(false); 
 
   const [viewMode, setViewMode] = useState<'card' | 'list'>('card');
   const [searchTerm, setSearchTerm] = useState<string>('');
@@ -79,7 +79,6 @@ export default function HomePage() {
         }
     }
 
-    // Autocomplete D octet to 255 only if A, B, C are valid and D is currently empty or already 255
     if (isValidOctet(startOctets[0]) && isValidOctet(startOctets[1]) && isValidOctet(startOctets[2])) {
         if (currentEndOctetsRaw[3] === '' || currentEndOctetsRaw[3] === '255') {
             if (newEndOctets[3] !== '255') {
@@ -112,7 +111,7 @@ export default function HomePage() {
       try {
         console.log("Stopping existing monitoring before new scan.");
         await window.go.main.App.StopMonitoring();
-        setIsMonitoring(false); // Update UI state after backend confirmation (or optimistically)
+        setIsMonitoring(false); 
         toast({ title: "Monitoring Paused", description: "Live monitoring paused for new scan."});
       } catch (e:any) {
         toast({ title: "Error Pausing Monitoring", description: e.message, variant: "destructive" });
@@ -122,7 +121,7 @@ export default function HomePage() {
     setIsScanning(true);
     setHosts([]);
     setError(null);
-    setScanInitiated(true); // Mark that a scan has been initiated
+    setScanInitiated(true); 
 
     const scanParameters: WailsScanParameters = {
         startIp: rangeInput.startIp,
@@ -140,7 +139,7 @@ export default function HomePage() {
         console.warn("Wails Go backend not available. Using mock streaming network scanner with params:", scanParameters);
         await mockScanNetworkService(
           scanParameters,
-          (host: Host) => {
+          (host: FrontendHost) => { // Mock service returns FrontendHost
             setHosts(prevHosts => {
               const newHostWithStatus = { ...host, status: 'online' as const };
               if (prevHosts.find(h => h.ipAddress === newHostWithStatus.ipAddress)) return prevHosts;
@@ -167,17 +166,11 @@ export default function HomePage() {
   }, [toast, effectivePorts, searchHiddenHosts, parsedHiddenHostsPorts, settingsLoaded, isMonitoring]);
 
   useEffect(() => {
-    // Check initial monitoring status from backend
     if (settingsLoaded && typeof window.go?.main?.App?.IsMonitoringActive === 'function') {
       window.go.main.App.IsMonitoringActive().then(active => {
         setIsMonitoring(active);
         if (active) {
           toast({ title: "Monitoring Active", description: "Resumed live host status monitoring." });
-          // If monitoring was active on load, and hosts exist, they should ideally get their status updated.
-          // The backend `StartMonitoring` will do initial checks for passed IPs.
-          // We could re-trigger StartMonitoring if hosts exist and monitoring was active,
-          // but it's safer to let the user re-enable if they wish after a reload.
-          // For now, just sync the button state.
         }
       }).catch(err => console.error("Failed to get initial monitoring state:", err));
     }
@@ -191,9 +184,11 @@ export default function HomePage() {
     let unlistenHostStatusUpdate: (() => void) | undefined;
 
     if (typeof window.runtime?.EventsOn === 'function') {
-      unlistenHostFound = window.runtime.EventsOn('hostFound', (host: Host) => {
+      // WailsHost is received from Go backend
+      unlistenHostFound = window.runtime.EventsOn('hostFound', (hostFromGo: WailsHost) => {
         setHosts(prevHosts => {
-          const newHostWithStatus = { ...host, status: 'online' as const };
+          // Convert WailsHost to FrontendHost for local state
+          const newHostWithStatus: FrontendHost = { ...hostFromGo, status: 'online' as const };
           if (prevHosts.find(h => h.ipAddress === newHostWithStatus.ipAddress)) {
             return prevHosts.map(h => h.ipAddress === newHostWithStatus.ipAddress ? newHostWithStatus : h);
           }
@@ -211,16 +206,6 @@ export default function HomePage() {
         if (!success) {
           console.warn("Scan completed, but Go backend indicated an issue during the scan.");
            setError(prevError => prevError || "Scan finished with an issue from the backend.");
-        } else {
-          // Scan successful. If monitoring should be re-enabled, it happens here or user does it manually.
-          // For simplicity, user re-enables manually if desired.
-          // If `isMonitoring` was true before scan and we want to auto-restart:
-          // const currentHosts = hostsRef.current; // Need to use a ref for up-to-date hosts or get from state update
-          // if (isMonitoring && currentHosts.length > 0 && typeof window.go?.main?.App?.StartMonitoring === 'function') {
-          //   const ipsToMonitor = currentHosts.map(h => h.ipAddress);
-          //   await window.go.main.App.StartMonitoring(ipsToMonitor);
-          //   // setIsMonitoring(true); // Already true or will be set by backend
-          // }
         }
       });
 
@@ -236,21 +221,18 @@ export default function HomePage() {
       });
 
       unlistenHostStatusUpdate = window.runtime.EventsOn('hostStatusUpdate', (update: HostStatusUpdate) => {
-        let hostForToast: Host | undefined;
+        let hostForToast: FrontendHost | undefined;
         setHosts(prevHosts => {
           const updatedHosts = prevHosts.map(h => {
             if (h.ipAddress === update.ipAddress) {
-               // Found the host, create the updated version
               hostForToast = { ...h, status: update.isOnline ? 'online' : 'offline' };
-              return hostForToast; // Return the updated host
+              return hostForToast; 
             }
-            return h; // Return unchanged host
+            return h; 
           });
-            // Move toast outside the map function, trigger after state updates
-          return updatedHosts; // Return the new state array
+          return updatedHosts; 
         });
 
-        // Trigger toast after state update completes, using the captured hostForToast
         if (hostForToast) {
             const displayIdentifier = hostForToast.hostname || hostForToast.ipAddress;
             toast({
@@ -271,9 +253,9 @@ export default function HomePage() {
       if (unlistenScanError) unlistenScanError();
       if (unlistenHostStatusUpdate) unlistenHostStatusUpdate();
     };
-  }, [toast]); // Removed `hosts` from dependency array as it's no longer needed for the toast logic
+  }, [toast]); 
 
-  const handleHostSelect = (host: Host) => {
+  const handleHostSelect = (host: FrontendHost) => {
     setSelectedHost(host);
     setIsDrawerOpen(true);
   };
@@ -300,7 +282,6 @@ export default function HomePage() {
 
     if (!isValidIp(finalStartIp)) {
       toast({ title: "Invalid Input", description: "Start IP address is not valid. Empty octets were treated as '0'.", variant: "destructive" });
-      // Optionally shake the input container
       const ipRangeContainer = document.getElementById('ip-range-container');
       ipRangeContainer?.classList.add('animate-shake');
       setTimeout(() => ipRangeContainer?.classList.remove('animate-shake'), 500);
@@ -326,7 +307,6 @@ export default function HomePage() {
     }
 
     fetchHosts({ startIp: finalStartIp, endIp: finalEndIp });
-    // setIsCustomRangeDialogOpen(false); // Removed
     return true;
   }, [startIp, endIp, fetchHosts, toast]);
 
@@ -371,7 +351,7 @@ export default function HomePage() {
       return;
     }
 
-    if (isMonitoring) { // Turning OFF
+    if (isMonitoring) { 
       if (typeof window.go?.main?.App?.StopMonitoring === 'function') {
         try {
           await window.go.main.App.StopMonitoring();
@@ -384,19 +364,28 @@ export default function HomePage() {
       } else {
         toast({ title: "Feature Not Available", description: "StopMonitoring backend function missing.", variant: "destructive" });
       }
-    } else { // Turning ON
+    } else { 
       if (hosts.length === 0) {
         toast({ title: "No Hosts to Monitor", description: "Scan for hosts first." });
         return;
       }
       if (typeof window.go?.main?.App?.StartMonitoring === 'function') {
-        const ipsToMonitor = hosts.map(h => h.ipAddress);
+        // Convert FrontendHost[] to WailsHost[] before sending to backend
+        const hostsForBackend: WailsHost[] = hosts.map(h => ({
+          ipAddress: h.ipAddress,
+          hostname: h.hostname,
+          macAddress: h.macAddress,
+          os: h.os,
+          openPorts: h.openPorts,
+          deviceType: h.deviceType,
+          // 'status' field is frontend-only, not sent to backend StartMonitoring
+        }));
+
         try {
-          await window.go.main.App.StartMonitoring(ipsToMonitor);
+          await window.go.main.App.StartMonitoring(hostsForBackend, searchHiddenHosts, parsedHiddenHostsPorts);
           setIsMonitoring(true);
-          // Backend will send initial status updates. Optimistically set to 'online' or 'monitoring'
           setHosts(prevHosts => prevHosts.map(h => ({ ...h, status: 'online' })));
-          toast({ title: "Monitoring Started", description: `Monitoring ${ipsToMonitor.length} hosts.` });
+          toast({ title: "Monitoring Started", description: `Monitoring ${hostsForBackend.length} hosts.` });
         } catch (e: any) {
           toast({ title: "Error Starting Monitoring", description: e.message || "Unknown error", variant: "destructive" });
         }
@@ -456,15 +445,10 @@ export default function HomePage() {
     <>
       <Header onSettingsClick={() => setIsSettingsDialogOpen(true)} />
       <main className="flex-grow container mx-auto p-4 md:px-8 md:pt-8 space-y-6">
-        {/* IP Range Input and Scan Button */}
         <Card>
           <CardContent className="pt-6">
-            {/* Add id for shake animation targeting */}
-            {/* Use flex-col for vertical stacking, lg:flex-row for horizontal on large screens */}
-            {/* items-start ensures alignment from top, lg:items-end aligns buttons to bottom of inputs on large screens */}
             <div id="ip-range-container" className="flex flex-col lg:flex-row lg:items-end gap-4 lg:gap-6">
-              {/* IpRangeInput now handles its internal layout */}
-              <div className="flex-grow"> {/* Allows IpRangeInput to take available space */}
+              <div className="flex-grow"> 
                 <IpRangeInput
                   startIp={startIp}
                   onStartIpChange={setStartIp}
@@ -474,15 +458,11 @@ export default function HomePage() {
                   onEnterPress={handleScan}
                 />
               </div>
-              {/* Buttons aligned next to inputs on larger screens */}
-              {/* Use flex-shrink-0 to prevent buttons from shrinking */}
-              {/* mt-4 lg:mt-0 adds top margin on small screens, removed on large */}
-              {/* lg:self-end ensures buttons align to the bottom in the row layout */}
               <div className="flex flex-row gap-2 w-full lg:w-auto flex-shrink-0 mt-4 lg:mt-0 lg:self-end">
                 <Button
                   onClick={handleScan}
                   disabled={isScanning || !settingsLoaded}
-                  className="flex-grow md:flex-grow-0" // Grow on small screens, fixed size on medium+
+                  className="flex-grow md:flex-grow-0" 
                   title="Scan the specified IP range"
                 >
                   <ScanSearch className={`mr-2 h-4 w-4 ${isScanning ? 'animate-pulse' : ''}`} />
@@ -491,7 +471,7 @@ export default function HomePage() {
                  <Button
                   onClick={() => setIsHistoryDrawerOpen(true)}
                   variant="outline"
-                  className="flex-grow md:flex-grow-0" // Grow on small screens, fixed size on medium+
+                  className="flex-grow md:flex-grow-0" 
                   disabled={!settingsLoaded}
                   aria-label="Scan History"
                   title="View Scan History"
@@ -510,7 +490,6 @@ export default function HomePage() {
         </Card>
 
 
-        {/* Results Section */}
         <div>
           <div className="flex flex-col sm:flex-row justify-between items-center mb-6 gap-4">
             <h2 className="text-2xl font-semibold text-foreground">
@@ -535,7 +514,6 @@ export default function HomePage() {
             </div>
           </div>
 
-          {/* Sticky container for filter and view controls */}
           <div className="sticky top-0 z-10 bg-background py-4 mb-6 shadow-sm -mx-4 px-4 md:-mx-8 md:px-8">
             <div className="flex flex-col md:flex-row justify-between items-center gap-4">
               <div className="relative w-full md:flex-grow">
@@ -575,8 +553,6 @@ export default function HomePage() {
             </div>
           </div>
 
-          {/* Loading / Error / No Results States */}
-          {/* Removed settings loading check here as it's handled above the input */}
 
           {isScanning && hosts.length === 0 && !error && (
              viewMode === 'card' ? (
@@ -643,7 +619,6 @@ export default function HomePage() {
              </div>
            )}
 
-          {/* Display Results */}
           {filteredHosts.length > 0 && (
             viewMode === 'card' ? (
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
@@ -667,7 +642,6 @@ export default function HomePage() {
           onOpenChange={setIsDrawerOpen}
         />
 
-        {/* CustomRangeDialog Removed */}
 
         <ScanHistoryDrawer
             isOpen={isHistoryDrawerOpen}

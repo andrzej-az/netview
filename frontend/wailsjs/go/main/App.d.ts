@@ -4,3 +4,6 @@ import {main} from '../models';
 
 export function ScanNetwork(arg1:main.ScanRange):Promise<void>;
 export function GetScanHistory():Promise<main.ScanHistoryItem[]>;
+export function StartMonitoring(hostsToMonitor: main.Host[], searchHidden: boolean, hiddenPortsList: number[]):Promise<void>;
+export function StopMonitoring():Promise<void>;
+export function IsMonitoringActive():Promise<boolean>;

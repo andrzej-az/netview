@@ -38,4 +38,27 @@ export namespace main {
 	    }
 	}
 
+	// Added Host model to match Go backend Host struct
+	export class Host {
+	    ipAddress: string;
+	    hostname?: string;
+	    macAddress?: string;
+	    os?: string;
+	    openPorts?: number[];
+	    deviceType?: string;
+
+	    static createFrom(source: any = {}) {
+	        return new Host(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.ipAddress = source["ipAddress"];
+	        this.hostname = source["hostname"];
+	        this.macAddress = source["macAddress"];
+	        this.os = source["os"];
+	        this.openPorts = source["openPorts"];
+	        this.deviceType = source["deviceType"];
+	    }
+	}
 }

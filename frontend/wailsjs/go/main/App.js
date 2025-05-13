@@ -9,3 +9,15 @@ export function ScanNetwork(arg1) {
 export function GetScanHistory() {
   return window['go']['main']['App']['GetScanHistory']();
 }
+
+export function StartMonitoring(hostsToMonitor, searchHidden, hiddenPortsList) {
+  return window['go']['main']['App']['StartMonitoring'](hostsToMonitor, searchHidden, hiddenPortsList);
+}
+
+export function StopMonitoring() {
+  return window['go']['main']['App']['StopMonitoring']();
+}
+
+export function IsMonitoringActive() {
+  return window['go']['main']['App']['IsMonitoringActive']();
+}
