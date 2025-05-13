@@ -1,11 +1,10 @@
-
 package main
 
 import (
 	"context"
 	"errors" // Required for errors.Is
 	"fmt"
-	"net" // Required for net.DialTimeout and net.Error
+	"net"     // Required for net.DialTimeout and net.Error
 	"strings" // Required for strings.Contains
 	"sync"
 	"syscall" // Required for syscall.ECONNREFUSED
@@ -21,19 +20,19 @@ type HostStatusUpdate struct {
 }
 
 var (
-	monitoringCtx             context.Context      // Context for the current monitoring session
-	monitoringCancel          context.CancelFunc   // Function to cancel the current monitoring session
-	monitoringWg              sync.WaitGroup       // Waits for monitoring goroutines to complete
-	monitorMutex              sync.Mutex           // Protects access to monitoring-related shared variables
-	isCurrentlyMonitoring     bool                 // Flag indicating if monitoring is active
-	
-	monitoredHostDetails      map[string]Host      // IP -> Host details as found by scan (includes OpenPorts)
-	monitoredHostStatuses     map[string]bool      // IP -> last known online status for monitoring
-	currentMonitorSearchHidden bool                // SearchHiddenHosts setting at the time monitoring started
-	currentMonitorHiddenPorts  []int               // HiddenHostsPorts setting at the time monitoring started
+	monitoringCtx         context.Context    // Context for the current monitoring session
+	monitoringCancel      context.CancelFunc // Function to cancel the current monitoring session
+	monitoringWg          sync.WaitGroup     // Waits for monitoring goroutines to complete
+	monitorMutex          sync.Mutex         // Protects access to monitoring-related shared variables
+	isCurrentlyMonitoring bool               // Flag indicating if monitoring is active
+
+	monitoredHostDetails       map[string]Host // IP -> Host details as found by scan (includes OpenPorts)
+	monitoredHostStatuses      map[string]bool // IP -> last known online status for monitoring
+	currentMonitorSearchHidden bool            // SearchHiddenHosts setting at the time monitoring started
+	currentMonitorHiddenPorts  []int           // HiddenHostsPorts setting at the time monitoring started
 )
 
-const monitorInterval = 10 * time.Second // Interval for checking host statuses
+const monitorInterval = 10 * time.Second             // Interval for checking host statuses
 const monitorTcpPingTimeout = 200 * time.Millisecond // Timeout for individual TCP pings during monitoring (same as isHostAlive)
 
 // InitializeMonitor prepares the monitoring system. Called on app startup.
@@ -45,8 +44,8 @@ func (a *App) InitializeMonitor() {
 	}
 	monitoredHostDetails = make(map[string]Host)
 	monitoredHostStatuses = make(map[string]bool)
-	isCurrentlyMonitoring = false 
-	currentMonitorSearchHidden = false // Default value
+	isCurrentlyMonitoring = false
+	currentMonitorSearchHidden = false  // Default value
 	currentMonitorHiddenPorts = []int{} // Default empty slice
 	runtime.LogDebug(a.ctx, "Monitoring system initialized.")
 }
@@ -82,7 +81,7 @@ func (a *App) StartMonitoring(hostsToMonitor []Host, searchHiddenParameters bool
 	monitoredHostDetails = make(map[string]Host)
 	monitoredHostStatuses = make(map[string]bool)
 	for _, h := range hostsToMonitor {
-		monitoredHostDetails[h.IPAddress] = h      // Store the full host detail
+		monitoredHostDetails[h.IPAddress] = h     // Store the full host detail
 		monitoredHostStatuses[h.IPAddress] = true // Assume online initially; first check will verify
 	}
 	// Store the monitoring parameters
@@ -133,7 +132,6 @@ func (a *App) performStatusChecks(ctx context.Context) {
 	copy(localHiddenPorts, currentMonitorHiddenPorts)
 	monitorMutex.Unlock()
 
-
 	if len(ipsToCheck) == 0 {
 		return
 	}
@@ -153,11 +151,10 @@ func (a *App) performStatusChecks(ctx context.Context) {
 			monitorMutex.Unlock()
 			continue
 		}
-		lastKnownStatus := monitoredHostStatuses[ip]
 		monitorMutex.Unlock() // Unlock after reading, before network ops
 
 		isNowOnline := false
-		var rttForLog time.Duration = -1 // For logging if needed, not strictly used by logic here
+		//var rttForLog time.Duration = -1 // For logging if needed, not strictly used by logic here
 
 		// Priority 1: Check known open service ports of this specific host
 		if len(hostDetail.OpenPorts) > 0 {
@@ -178,7 +175,7 @@ func (a *App) performStatusChecks(ctx context.Context) {
 					// runtime.LogDebug(ctx, fmt.Sprintf("Monitor: Host %s timeout on known port %d", ip, port))
 					continue // Timeout on this port, try next known open port
 				}
-				if errors.Is(errDial, syscall.ECONNREFUSED) || strings.Contains(strings.ToLower(errDial.Error()), "connection refused"){
+				if errors.Is(errDial, syscall.ECONNREFUSED) || strings.Contains(strings.ToLower(errDial.Error()), "connection refused") {
 					isNowOnline = true
 					// runtime.LogDebug(ctx, fmt.Sprintf("Monitor: Host %s alive (known port %d refused)", ip, port))
 					break // Found alive via known port refused
@@ -195,7 +192,7 @@ func (a *App) performStatusChecks(ctx context.Context) {
 			// isHostAlive is from scan.go (same package)
 			isNowOnline = isHostAlive(ip, &fallbackRtt, localSearchHidden, localHiddenPorts)
 			if isNowOnline {
-				rttForLog = fallbackRtt
+				//rttForLog = fallbackRtt
 				// runtime.LogDebug(ctx, fmt.Sprintf("Monitor: Host %s found alive via general isHostAlive check (RTT: %s)", ip, fallbackRtt))
 			} else {
 				// runtime.LogDebug(ctx, fmt.Sprintf("Monitor: Host %s also not found via general isHostAlive check.", ip))
@@ -210,9 +207,9 @@ func (a *App) performStatusChecks(ctx context.Context) {
 			monitorMutex.Unlock()
 			continue
 		}
-		
+
 		currentStatusInMap := monitoredHostStatuses[ip] // Re-fetch in case of concurrent modification (though unlikely here)
-		if isNowOnline != currentStatusInMap { // Compare with the status from the map for this cycle
+		if isNowOnline != currentStatusInMap {          // Compare with the status from the map for this cycle
 			monitoredHostStatuses[ip] = isNowOnline // Update the status in the map
 			runtime.LogInfo(ctx, fmt.Sprintf("Host %s status changed: was %t, now %t. Emitting event.", ip, currentStatusInMap, isNowOnline))
 			runtime.EventsEmit(ctx, "hostStatusUpdate", HostStatusUpdate{IPAddress: ip, IsOnline: isNowOnline})
@@ -241,7 +238,7 @@ func (a *App) StopMonitoring() error {
 
 	monitoringWg.Wait()
 
-	monitorMutex.Lock() // Re-acquire lock to safely update shared state
+	monitorMutex.Lock()           // Re-acquire lock to safely update shared state
 	isCurrentlyMonitoring = false // Ensure flag is accurate
 	// Clear monitored data
 	monitoredHostDetails = make(map[string]Host)
