@@ -82,7 +82,7 @@ export const ScanHistoryDrawer: FC<ScanHistoryDrawerProps> = ({
       <SheetContent 
         side="right" 
         // Removed mt-8 and h-[calc(100vh-2rem)]
-        className="w-[350px] sm:w-[400px] p-0 flex flex-col" 
+        className="w-[400px] sm:w-[400px] p-[20px] flex flex-col" 
       >
         <SheetHeader className="p-6 border-b">
           <SheetTitle className="flex items-center text-xl">
