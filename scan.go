@@ -41,7 +41,7 @@ var appCtx context.Context
 var defaultPortsToScan = []int{22, 80, 443, 8080, 445} // Default ports if not specified by user
 
 const (
-	tcpPingTimeout  = 1 * time.Second // Timeout for TCP "ping" attempts
+	tcpPingTimeout  = 200 * time.Millisecond // Timeout for TCP "ping" attempts
 	portScanTimeout = 500 * time.Millisecond
 	maxConcurrency  = 100             // Max concurrent goroutines for scanning IPs
 	arpTimeout      = 2 * time.Second // Timeout for ARP command execution
@@ -60,7 +60,7 @@ func isHostAlive(targetIP string, RTT *time.Duration) bool {
 
 	// Ports to try for a "TCP ping".
 	// Common ports that are likely to elicit a quick response (open or RST).
-	probePorts := []int{80, 443, 22, 8080} // Common ports
+	probePorts := []int{80, 443, 135, 445, 22} // Common ports
 
 	for _, port := range probePorts {
 		address := fmt.Sprintf("%s:%d", targetIP, port)
