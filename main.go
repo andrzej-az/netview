@@ -1,9 +1,9 @@
-
 package main
 
 import (
-	"embed"
 	"context"
+	"embed"
+
 	// "fmt" // No longer needed here
 	// "net" // No longer needed here
 	// "time" // No longer needed here
@@ -40,7 +40,6 @@ func (a *App) startup(ctx context.Context) {
 	runtime.LogInfo(ctx, "Application startup complete.")
 }
 
-
 // ScanNetwork now accepts a pointer to ScanRange, which may include IPs and/or Ports.
 // If scanRange is nil, or if fields within are zero-valued, PerformScan handles defaults.
 func (a *App) ScanNetwork(scanRange *ScanRange) error {
@@ -55,32 +54,31 @@ func (a *App) ScanNetwork(scanRange *ScanRange) error {
 // StartMonitoring, StopMonitoring, IsMonitoringActive will be defined in monitor.go
 // and bound automatically as methods of *App.
 
-
 func main() {
 	// Create an instance of the app structure
 	app := NewApp()
 
 	// Create application with options
 	err := wails.Run(&options.App{
-		Title:  "NetView - Network Scanner",
-		Width:  1024,
-		Height: 768,
+		Title:     "NetView - Network Scanner",
+		Width:     1024,
+		Height:    768,
 		Frameless: true, // Enable frameless window for custom title bar
 		AssetServer: &assetserver.Options{
 			Assets: assets,
 		},
+		CSSDragProperty:  "widows",
+		CSSDragValue:     "1",
 		BackgroundColour: &options.RGBA{R: 27, G: 38, B: 54, A: 1}, // Dark background, can be adjusted
 		OnStartup:        app.startup,
 		Bind: []interface{}{
 			app, // Binding the app instance makes all its methods available to the frontend.
 		},
 		// Enable debug logging for Wails runtime
-		// LogLevel: logger.DEBUG, 
+		// LogLevel: logger.DEBUG,
 	})
 
 	if err != nil {
 		println("Error:", err.Error())
 	}
 }
-
-    

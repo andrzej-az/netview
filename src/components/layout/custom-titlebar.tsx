@@ -84,7 +84,7 @@ export function CustomTitlebar() {
     // However, for sheets to overlay it, it should generally not have a z-index if it's static.
     // Or, if it needs to be above some relative/sticky content, then relative and a z-index might be useful.
     // For now, let it be a simple block element in the flex flow.
-    <div className="h-8 bg-background text-foreground flex items-center justify-between border-b print:hidden">
+    <div style={{widows: 1}} className="h-8 bg-background text-foreground flex items-center justify-between border-b print:hidden">
       {/* Draggable Area and Title */}
       <div data-wails-drag className="flex-grow h-full flex items-center px-3 select-none">
         <AppIcon className="h-4 w-4 mr-2 text-primary" />
