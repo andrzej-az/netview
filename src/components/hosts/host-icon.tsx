@@ -2,22 +2,24 @@
 'use client';
 
 import type { LucideProps } from 'lucide-react';
-import { Laptop, Server, Smartphone, Printer, RouterIcon as NetworkRouterIcon, PcCase, HelpCircle, Apple, Laptop2 } from 'lucide-react';
+import { Laptop, Server, Smartphone, Printer, RouterIcon as NetworkRouterIcon, PcCase, HelpCircle, Apple as LucideAppleIcon, Laptop2 } from 'lucide-react';
 import type React from 'react';
+import { DiApple, DiAndroid, DiWindows, DiRaspberryPi, DiLinux } from 'devicons-react';
 
-interface HostIconProps extends LucideProps {
+interface HostIconProps extends LucideProps { // Assuming Devicon components also accept similar props
   deviceType?: string;
 }
 
-const iconMap: Record<string, React.ElementType<LucideProps>> = {
-  windows_pc: Laptop,
-  linux_pc: Laptop2, // Changed from Laptop to Laptop2 for differentiation
-  macos_pc: Apple,
-  linux_server: Server,
-  android_mobile: Smartphone,
-  ios_mobile: Smartphone,
+const iconMap: Record<string, React.ElementType<any>> = { // Use 'any' for mixed component types
+  windows_pc: DiWindows,
+  linux_pc: DiLinux,
+  macos_pc: DiApple,
+  linux_server: DiLinux, // Using DiLinux as requested, could also be Server from lucide
+  android_mobile: DiAndroid,
+  ios_mobile: DiApple, // For "apple devices"
   printer: Printer,
   router_firewall: NetworkRouterIcon,
+  raspberry_pi: DiRaspberryPi, // New type
   generic_device: PcCase,
   default: HelpCircle, // Fallback for unknown types
 };
