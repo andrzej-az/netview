@@ -66,7 +66,11 @@ func isHostAlive(targetIP string, RTT *time.Duration, searchHidden bool, hiddenP
 
 		pinger.Count = 1
 		pinger.Timeout = time.Second
-		pinger.SetPrivileged(false)
+		if runtime_go.GOOS == "windows" {
+			pinger.SetPrivileged(true)
+		} else {
+			pinger.SetPrivileged(false)
+		}
 		err = pinger.Run()
 		if err == nil {
 
