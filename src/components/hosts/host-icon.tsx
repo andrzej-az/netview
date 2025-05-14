@@ -14,14 +14,14 @@ const iconMap: Record<string, React.ElementType<any>> = { // Use 'any' for mixed
   windows_pc: DiWindows,
   linux_pc: DiLinux,
   macos_pc: DiApple,
-  linux_server: DiLinux, // Using DiLinux as requested, could also be Server from lucide
+  linux_server: DiLinux, 
   android_mobile: DiAndroid,
-  ios_mobile: DiApple, // For "apple devices"
+  ios_mobile: DiApple, 
   printer: Printer,
   router_firewall: NetworkRouterIcon,
-  raspberry_pi: DiRaspberryPi, // New type
-  generic_device: PcCase,
-  default: HelpCircle, // Fallback for unknown types
+  raspberry_pi: DiRaspberryPi, 
+  generic_device: PcCase, // Using PcCase for generic_device
+  default: PcCase, // Fallback for unknown types changed to PcCase
 };
 
 export function HostIcon({ deviceType, className, ...props }: HostIconProps) {
