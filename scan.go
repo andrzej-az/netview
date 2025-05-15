@@ -51,10 +51,14 @@ const (
 	arpTimeout      = 2 * time.Second // Timeout for ARP command execution
 )
 
-// InitScanner initializes the scanner with the application context.
-func InitScanner(ctx context.Context) {
-	appCtx = ctx
-}
+// var macDB *ouidb.OuiDb
+
+// // InitScanner initializes the scanner with the application context.
+// func InitScanner(ctx context.Context, db *OuiDb) {
+// 	appCtx = ctx
+// 	macDB = db
+
+// }
 
 // isHostAlive attempts a TCP connection to common ports and optionally specified hidden ports to check for liveness.
 // RTT will be the time taken for the first successful or refused connection.
@@ -180,7 +184,7 @@ func getMacAddress(ipAddress string) string {
 }
 
 // determineDeviceTypeBasedOnData provides a heuristic for device type.
-func determineDeviceTypeBasedOnData(ipAddress, hostname string, openPorts []int) string {
+func determineDeviceTypeBasedOnData(ipAddress, hostname, macAddress string, openPorts []int) string {
 	lowerHostname := strings.ToLower(hostname)
 
 	if strings.Contains(lowerHostname, "printer") || containsAny(openPorts, []int{631, 9100, 515}) {
@@ -192,11 +196,24 @@ func determineDeviceTypeBasedOnData(ipAddress, hostname string, openPorts []int)
 		return "router_firewall"
 	}
 
-	if containsAny(openPorts, []int{135, 137, 138, 139, 445, 3389}) {
-		return "windows_pc"
-	}
 	if strings.Contains(lowerHostname, "macbook") || strings.Contains(lowerHostname, "imac") || strings.Contains(lowerHostname, "apple") || (containsAny(openPorts, []int{22, 548, 445}) && !strings.Contains(lowerHostname, "linux")) {
 		return "macos_pc"
+	}
+
+	if macAddress != "" && macDB != nil {
+		vendor, err := macDB.VendorLookup(macAddress)
+		if err == nil {
+			lowerVendor := strings.ToLower(vendor)
+			if strings.Contains(lowerVendor, "apple") {
+				return "macos_pc"
+			} else if strings.Contains(lowerVendor, "raspberry") {
+				return "raspberry_pi"
+			}
+		}
+	}
+	
+	if containsAny(openPorts, []int{135, 137, 138, 139, 445}) {
+		return "windows_pc"
 	}
 
 	hasSSH := containsAny(openPorts, []int{22})
@@ -214,10 +231,6 @@ func determineDeviceTypeBasedOnData(ipAddress, hostname string, openPorts []int)
 	}
 	if strings.Contains(lowerHostname, "iphone") || strings.Contains(lowerHostname, "ipad") {
 		return "ios_mobile"
-	}
-
-	if containsAny(openPorts, []int{80, 443, 8000, 8080}) {
-		return "generic_device"
 	}
 
 	return "generic_device"
@@ -334,7 +347,7 @@ func PerformScan(ctx context.Context, scanParams *ScanRange) error {
 
 				hostname := resolveHostname(ipToScan)
 				macAddress := getMacAddress(ipToScan)
-				deviceType := determineDeviceTypeBasedOnData(ipToScan, hostname, openPorts)
+				deviceType := determineDeviceTypeBasedOnData(ipToScan, hostname, macAddress, openPorts)
 
 				host := Host{
 					IPAddress:  ipToScan,

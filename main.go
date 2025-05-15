@@ -6,7 +6,7 @@ import (
 
 	// "fmt" // No longer needed here
 	// "net" // No longer needed here
-	// "time" // No longer needed here
+	"netview/ouidb"
 
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
@@ -16,6 +16,12 @@ import (
 
 //go:embed all:out
 var assets embed.FS
+
+//go:embed assets/oui.txt
+var ouiData embed.FS
+
+// Global variable for the OUI database
+var macDB *ouidb.OuiDb
 
 // App struct
 type App struct {
@@ -31,13 +37,30 @@ func NewApp() *App {
 // so we can call the runtime methods
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
-	// Initialize the scanner with the context
-	InitScanner(ctx)
+	// Initialize the OUI database
+	initOuiDatabase(ctx)
+	// Initialize the scanner with the context and the OUI database
+	//InitScanner(ctx, macDB)
 	// Initialize and load scan history
 	initHistory(ctx) // Pass context for logging
 	// Initialize monitoring components
 	a.InitializeMonitor()
 	runtime.LogInfo(ctx, "Application startup complete.")
+}
+
+// initOuiDatabase initializes the OUI database from the embedded assets/oui.txt file.
+func initOuiDatabase(ctx context.Context) {
+	file, err := ouiData.Open("assets/oui.txt")
+	if err != nil {
+		runtime.LogError(ctx, "Failed to open oui.txt: "+err.Error())
+		return
+	}
+	defer file.Close()
+
+	macDB.Load(file)
+	if macDB == nil {
+		runtime.LogError(ctx, "Failed to initialize OUI database: "+err.Error())
+	}
 }
 
 // ScanNetwork now accepts a pointer to ScanRange, which may include IPs and/or Ports.
