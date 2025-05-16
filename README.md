@@ -3,7 +3,7 @@
 
 NetView is a desktop application built with Wails (Go + Svelte/React/Vue) and Next.js for the frontend, designed to help you discover and monitor devices on your local network. It provides a user-friendly interface to scan IP ranges, identify hosts, and get insights into their open ports and potential device types.
 
-![NetView Screenshot](docs/netview.jpg)
+![NetView Screenshot](docs/netveiw.jpg)
 *Note: If the screenshot above is not visible, please ensure you have an image at `docs/netview.jpg` in your project.*
 
 ## Features
