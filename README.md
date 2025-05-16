@@ -42,6 +42,10 @@ The application is built using Wails and can be compiled for:
 
 *(macOS support is possible with Wails but the current GitHub workflow is configured for Linux and Windows builds.)*
 
+## Downloads / Releases
+
+You can find pre-built versions of NetView for supported operating systems on the [GitHub Releases page](https://github.com/andrzej-az/netview/releases).
+
 ## Usage Scenarios
 
 *   **Network Auditing:** Quickly get an overview of active devices on your home or small office network.
@@ -53,7 +57,7 @@ The application is built using Wails and can be compiled for:
 
 ## Author
 
-This application prototype was developed with the assistance of **Firebase Studio App Prototyper**.
+This application prototype was developed by with the assistance of **Firebase Studio App Prototyper**.
 
 ## Getting Started (Development)
 
@@ -72,3 +76,4 @@ To build the application for production:
 *   `wails build` - This will build the Go backend and bundle the Next.js frontend (after running `npm run build:export`) into a native desktop application.
 
 Look at `src/app/page.tsx` for the main frontend entry point and `main.go` for the Go backend entry point.
+
