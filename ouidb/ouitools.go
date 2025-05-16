@@ -188,13 +188,12 @@ func (m *OuiDb) Load(file fs.File) error {
 		s := matches[0][1]
 
 		i := byteIndex(s, '/')
-
 		if i == -1 {
-			block.Oui, err = ParseOUI(s, 6)
+			block.Oui, _ = ParseOUI(s, 6)
 			block.Mask = 24 // len(block.Oui) * 8
 		} else {
-			block.Oui, err = ParseOUI(s[:i], 6)
-			block.Mask, err = strconv.Atoi(s[i+1:])
+			block.Oui, _ = ParseOUI(s[:i], 6)
+			block.Mask, _ = strconv.Atoi(s[i+1:])
 		}
 
 		//fmt.Println("OUI:", block.Oui, block.Mask, err)

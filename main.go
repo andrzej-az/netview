@@ -17,7 +17,7 @@ import (
 //go:embed all:out
 var assets embed.FS
 
-//go:embed assets/oui.txt
+//go:embed macdb/oui.txt
 var ouiData embed.FS
 
 // Global variable for the OUI database
@@ -50,15 +50,14 @@ func (a *App) startup(ctx context.Context) {
 
 // initOuiDatabase initializes the OUI database from the embedded assets/oui.txt file.
 func initOuiDatabase(ctx context.Context) {
-	file, err := ouiData.Open("assets/oui.txt")
+	file, err := ouiData.Open("macdb/oui.txt")
 	if err != nil {
 		runtime.LogError(ctx, "Failed to open oui.txt: "+err.Error())
 		return
 	}
 	defer file.Close()
-
-	macDB.Load(file)
-	if macDB == nil {
+	macDB := &ouidb.OuiDb{}
+	if err := macDB.Load(file); err != nil {
 		runtime.LogError(ctx, "Failed to initialize OUI database: "+err.Error())
 	}
 }
